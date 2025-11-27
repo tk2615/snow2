@@ -1,7 +1,7 @@
 <html>
   <head>
     <meta charset="utf-8">
-    <title>Snow AR Camera (High Res Native)</title>
+    <title>Snow AR Camera (Design & Resume Fix)</title>
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no, maximum-scale=1.0, viewport-fit=cover">
 
     <style>
@@ -19,36 +19,24 @@
         opacity: 0.01; pointer-events: none; z-index: -99;
       }
 
-      /* メイン表示＆録画用キャンバス */
+      /* メインキャンバス */
       #work-canvas {
-        position: fixed;
-        top: 50%; left: 50%;
+        position: fixed; top: 50%; left: 50%;
         transform: translate(-50%, -50%);
-        
-        /* ★重要：見た目は画面いっぱいに広げる */
-        width: 100%;
-        height: 100%;
-        
-        /* アスペクト比が合わない部分は切り落として全画面埋める */
+        width: 100%; height: 100%;
         object-fit: cover; 
-        
-        z-index: 1;
-        display: block;
+        z-index: 1; display: block;
       }
 
       /* --- UIパーツ --- */
       .icon-btn {
-        position: fixed; top: 20px;
-        z-index: 500;
+        position: fixed; top: 20px; z-index: 500;
         width: 44px; height: 44px;
         background: rgba(0, 0, 0, 0.3);
         border: 1px solid rgba(255, 255, 255, 0.5);
-        border-radius: 50%;
-        color: white;
-        cursor: pointer;
+        border-radius: 50%; color: white; cursor: pointer;
         display: flex; justify-content: center; align-items: center;
-        backdrop-filter: blur(4px);
-        -webkit-tap-highlight-color: transparent; 
+        backdrop-filter: blur(4px); -webkit-tap-highlight-color: transparent; 
         transition: background 0.2s;
       }
       .icon-btn:active { background: rgba(255, 255, 255, 0.3); }
@@ -57,27 +45,39 @@
       #reload-btn { right: 20px; }
       #flip-btn { left: 20px; display: none; }
 
+      /* スタート画面 */
       #start-screen {
         position: fixed; top: 0; left: 0; width: 100%; height: 100%;
-        background-color: rgba(0,0,0,0.9);
+        background-color: #000; /* 背景真っ黒でクールに */
         z-index: 999;
         display: flex; justify-content: center; align-items: center; flex-direction: column;
         color: white;
-        padding: 20px;
-        box-sizing: border-box;
+        padding: 20px; box-sizing: border-box;
       }
+      
+      /* ★デザイン変更：STARTボタン */
       #start-btn {
-        padding: 15px 40px; font-size: 18px;
-        background: #ff3b30; color: white;
-        border: none; border-radius: 30px;
-        cursor: pointer; font-weight: bold;
+        padding: 15px 50px; 
+        font-size: 24px;
+        font-family: sans-serif;
+        background: white; /* 白背景 */
+        color: black;      /* 黒文字 */
+        border: none; 
+        border-radius: 40px;
+        cursor: pointer; 
+        font-weight: 900; /* 極太 */
+        letter-spacing: 2px;
         margin-bottom: 20px;
+        transition: transform 0.1s;
       }
+      #start-btn:active { transform: scale(0.95); }
+      
       #status-msg { 
-        color: #ffffff; font-size: 16px; text-align: center; line-height: 1.5;
-        white-space: pre-wrap;
+        color: #888; font-size: 14px; text-align: center; line-height: 1.5;
+        white-space: pre-wrap; margin-top: 10px;
       }
 
+      /* プレビュー画面 */
       #preview-modal {
         position: fixed; top: 0; left: 0; width: 100%; height: 100%;
         background-color: rgba(0,0,0,0.95);
@@ -88,16 +88,34 @@
         color: white;
       }
       #preview-img, #preview-video {
-        max-width: 90%; max-height: 70%;
+        max-width: 90%; max-height: 65%;
         border-radius: 8px; box-shadow: 0 0 20px rgba(0,0,0,0.5);
-        margin-bottom: 20px; object-fit: contain;
+        margin-bottom: 30px; object-fit: contain;
       }
       .preview-text { font-size: 14px; margin-bottom: 20px; color: #ccc; }
+      
       .preview-buttons { display: flex; gap: 20px; }
-      .btn { padding: 12px 30px; border-radius: 25px; border: none; font-size: 16px; font-weight: bold; cursor: pointer; }
-      .btn-save { background-color: #ff3b30; color: white; }
-      .btn-close { background-color: #555; color: white; }
+      
+      .btn { 
+        padding: 12px 30px; border-radius: 30px; border: none; 
+        font-size: 16px; font-weight: bold; cursor: pointer; 
+      }
+      
+      /* ★デザイン変更：Downloadボタン */
+      .btn-save { 
+        background-color: white; 
+        color: black; 
+      }
+      
+      /* ★デザイン変更：Backボタン */
+      .btn-close { 
+        background-color: #333; 
+        color: white; 
+        border: 1px solid #555;
+      }
 
+
+      /* シャッターボタン */
       #shutter-container {
         position: fixed; bottom: 30px; left: 50%;
         transform: translateX(-50%);
@@ -125,9 +143,7 @@
         display: flex; justify-content: center; align-items: center;
       }
       #camera-icon {
-        width: 32px; height: 32px;
-        fill: #333;
-        transition: opacity 0.2s;
+        width: 32px; height: 32px; fill: #333; transition: opacity 0.2s;
       }
       #shutter-container.recording #shutter-btn {
         width: 30px; height: 30px; top: 25px; left: 25px;
@@ -145,6 +161,7 @@
   </head>
 
   <body>
+
     <button id="reload-btn" class="icon-btn" onclick="location.reload()">
       <svg viewBox="0 0 24 24"><path d="M17.65 6.35C16.2 4.9 14.21 4 12 4c-4.42 0-7.99 3.58-7.99 8s3.57 8 7.99 8c3.73 0 6.84-2.55 7.73-6h-2.08c-.82 2.33-3.04 4-5.65 4-3.31 0-6-2.69-6-6s2.69-6 6-6c1.66 0 3.14.69 4.22 1.78L13 11h7V4l-2.35 2.35z"/></svg>
     </button>
@@ -153,7 +170,7 @@
     </button>
 
     <div id="start-screen">
-      <button id="start-btn">カメラを起動する</button>
+      <button id="start-btn">START</button>
       <div id="status-msg"></div>
     </div>
 
@@ -162,8 +179,8 @@
       <video id="preview-video" controls playsinline></video>
       <p id="preview-msg-photo" class="preview-text">画像長押しで保存してください</p>
       <div class="preview-buttons">
-        <button id="btn-save-video" class="btn btn-save" style="display:none;">動画を保存</button>
-        <button id="btn-close" class="btn btn-close">閉じる</button>
+        <button id="btn-save-video" class="btn btn-save" style="display:none;">Download</button>
+        <button id="btn-close" class="btn btn-close">Back</button>
       </div>
     </div>
 
@@ -240,7 +257,7 @@
       }
 
       // ==========================================
-      // カメラ初期化 (最大画角・ネイティブ解像度)
+      // カメラ初期化
       // ==========================================
       async function initCamera(facingMode) {
         if (cameraVideo.srcObject) {
@@ -249,19 +266,15 @@
 
         let stream = null;
         try {
-          log(`カメラ起動中 (${facingMode === 'user' ? '自撮り' : '外向き'})...`);
-          
           stream = await navigator.mediaDevices.getUserMedia({
             video: { 
               facingMode: facingMode,
-              // ★超高画質要求 (4K相当)
               width: { ideal: 4096 }, 
               height: { ideal: 2160 } 
             },
             audio: false 
           });
         } catch (err) {
-          log("高画質指定失敗...標準設定で再試行");
           try {
              stream = await navigator.mediaDevices.getUserMedia({
               video: { facingMode: facingMode },
@@ -286,42 +299,46 @@
         flipBtn.style.opacity = 0.5;
         try {
           await initCamera(currentFacingMode);
-          log("");
         } catch (err) {
-          log("カメラ切り替えエラー: " + err.message);
+          console.error(err);
         } finally {
           flipBtn.style.pointerEvents = 'auto';
           flipBtn.style.opacity = 1;
         }
       });
 
+      // ==========================================
+      // START処理
+      // ==========================================
       startBtn.addEventListener('click', async () => {
         startBtn.disabled = true;
-        startBtn.textContent = "起動中...";
-        log("初期化中...");
+        // 文字は変えない
+        // startBtn.textContent = "起動中..."; 
 
         try {
           snowV1.loop = false;
           snowV2.loop = false;
           await snowV1.play();
+          
           await initCamera(currentFacingMode);
+
           startScreen.style.display = 'none';
           shutterContainer.style.display = 'block';
           flipBtn.style.display = 'flex';
+          
           drawCompositeFrame(); 
+
         } catch (err) {
           console.error(err);
           startBtn.disabled = false;
-          startBtn.textContent = "再試行";
-          log("エラー: " + err.message);
+          statusMsg.textContent = "Error: " + err.message;
         }
       });
 
       // ==========================================
-      // 描画ループ (★ここが修正の肝★)
+      // 描画ループ
       // ==========================================
       function drawCompositeFrame() {
-        // カメラの生解像度 (例: 1920x1080)
         const vw = cameraVideo.videoWidth;
         const vh = cameraVideo.videoHeight;
 
@@ -330,8 +347,6 @@
            return;
         }
 
-        // Canvasのサイズは「カメラの生解像度」に合わせる！
-        // これで保存される画像や動画は超高画質になる
         if (canvas.width !== vw || canvas.height !== vh) {
           canvas.width = vw;
           canvas.height = vh;
@@ -339,12 +354,10 @@
           bufferCanvas.height = vh;
         }
 
-        // バッファクリア
         bufferCtx.globalCompositeOperation = 'source-over';
         bufferCtx.fillStyle = '#000000';
         bufferCtx.fillRect(0, 0, vw, vh);
 
-        // 雪動画の処理 (Canvas全体にカバーさせる)
         const duration = currentSnowVideo.duration;
         const currentTime = currentSnowVideo.currentTime;
 
@@ -377,27 +390,21 @@
           }
         }
 
-        // --- メイン合成 ---
-        
-        // 1. カメラ描画 (Canvasサイズ = カメラサイズなので等倍描画)
+        // 合成
         ctx.globalCompositeOperation = 'source-over';
         ctx.drawImage(cameraVideo, 0, 0, vw, vh);
-
-        // 2. 雪合成
         ctx.globalCompositeOperation = 'screen';
         ctx.drawImage(bufferCanvas, 0, 0);
 
         requestAnimationFrame(drawCompositeFrame);
       }
 
-      // 雪動画をCanvasいっぱい（カメラサイズいっぱい）に描画
       function drawSnowToBuffer(video, cw, ch, alpha) {
         if (alpha <= 0.01) return;
         const videoW = video.videoWidth;
         const videoH = video.videoHeight;
         if (videoW === 0 || videoH === 0) return;
 
-        // Cover計算
         const canvasAspect = cw / ch;
         const videoAspect = videoW / videoH;
         let sx, sy, sw, sh;
@@ -421,7 +428,7 @@
 
 
       // ==========================================
-      // プレビュー・撮影・保存
+      // プレビュー・撮影
       // ==========================================
       function showPreview(type, url, filename) {
         if (currentPreviewUrl) URL.revokeObjectURL(currentPreviewUrl);
@@ -454,12 +461,29 @@
         previewVideo.pause();
         previewVideo.src = "";
         previewImg.src = "";
+        
+        // ★修正点：プレビューを閉じたら雪動画を再開させる
+        // OSによって一時停止されている可能性があるため
+        if(currentSnowVideo.paused) currentSnowVideo.play().catch(()=>{});
+
         shutterContainer.style.display = 'block';
         flipBtn.style.display = 'flex';
         document.getElementById('reload-btn').style.display = 'flex';
       }
       
       btnClose.addEventListener('click', closePreview);
+
+
+      // ★修正点：ブラウザのタブ復帰時にも雪動画を再開させる
+      document.addEventListener("visibilitychange", () => {
+        if (document.visibilityState === "visible") {
+          // プレビューが開いていない時だけ再開
+          if (previewModal.style.display === 'none') {
+             if (currentSnowVideo.paused) currentSnowVideo.play().catch(()=>{});
+             if (cameraVideo.paused) cameraVideo.play().catch(()=>{});
+          }
+        }
+      });
 
 
       function takePhoto() {
