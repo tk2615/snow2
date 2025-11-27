@@ -1,7 +1,8 @@
+<!DOCTYPE html>
 <html>
   <head>
     <meta charset="utf-8">
-    <title>Snow AR Camera (Force Play Fix)</title>
+    <title>Snow AR Camera (Preview 75%)</title>
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no, maximum-scale=1.0, viewport-fit=cover">
     <style>
       h1:first-of-type { display: none !important; }
@@ -69,21 +70,23 @@
         filter: drop-shadow(0 0 10px rgba(0,0,0,0.5));
       }
        
+      /* スタートボタン */
       #start-btn {
         width: 60%; max-width: 300px; padding: 18px 0; 
         font-size: 20px; font-family: sans-serif;
-        background: #666; color: #ccc;
+        background: white; color: black; 
         border: none; border-radius: 50px;
-        cursor: not-allowed; font-weight: 900; letter-spacing: 2px;
-        box-shadow: none;
+        cursor: pointer; font-weight: 900; letter-spacing: 2px;
+        box-shadow: 0 4px 15px rgba(255,255,255,0.2);
         transition: all 0.3s; margin-bottom: 40px; 
       }
-      #start-btn.ready {
-        background: white; color: black;
-        cursor: pointer;
-        box-shadow: 0 4px 15px rgba(255,255,255,0.2);
+      #start-btn:active { transform: scale(0.95); }
+      
+      #start-btn.loading {
+        background: #999; color: #eee;
+        cursor: wait;
+        transform: scale(0.95);
       }
-      #start-btn.ready:active { transform: scale(0.95); }
 
       #error-overlay {
         position: fixed; top: 0; left: 0; width: 100%; height: 100%;
@@ -94,24 +97,30 @@
       }
       #error-text { font-size: 16px; line-height: 1.5; color: white; }
 
+      /* プレビュー画面 */
       #preview-modal {
         position: fixed; top: 0; left: 0; width: 100%; height: 100%;
         background-color: rgba(0,0,0,0.95); z-index: 2000;
         display: none; flex-direction: column;
         justify-content: center; align-items: center; color: white;
       }
+
+      /* ★修正点: プレビュー画面を75%に縮小 */
       #preview-img, #preview-video {
-        max-width: 95%; max-height: 85%;
+        max-width: 75%; 
+        max-height: 75%;
         border-radius: 8px; box-shadow: 0 0 20px rgba(0,0,0,0.5);
         margin-bottom: 20px; object-fit: contain;
       }
       #preview-video { pointer-events: none; }
+      
       .preview-text { font-size: 14px; margin-bottom: 10px; color: #ccc; }
       .preview-buttons { display: flex; gap: 20px; }
       .btn { padding: 12px 30px; border-radius: 30px; border: none; font-size: 16px; font-weight: bold; cursor: pointer; }
       .btn-save { background-color: white; color: black; }
       .btn-close { background-color: #333; color: white; border: 1px solid #555; }
 
+      /* アイコンボタン */
       .icon-btn {
         position: fixed; top: 20px; z-index: 500;
         width: 44px; height: 44px;
@@ -128,6 +137,7 @@
       #reload-btn { right: 20px; }
       #flip-btn { left: 20px; }
 
+      /* シャッターボタン（1.5倍のまま） */
       #shutter-container {
         position: fixed; bottom: 40px; 
         left: 50%;
@@ -173,7 +183,7 @@
       <div id="howto-container">
         <img id="howto-img" src="howto.png" alt="How to use">
       </div>
-      <button id="start-btn" disabled>LOADING...</button>
+      <button id="start-btn">START</button>
     </div>
 
     <div id="error-overlay">
@@ -279,74 +289,51 @@
           snowV1.src = videoBlobUrl;
           snowV2.src = videoBlobUrl;
           
-          await Promise.all([
-            new Promise(r => snowV1.onloadeddata = r),
-            new Promise(r => snowV2.onloadeddata = r)
-          ]);
+          snowV1.load();
+          snowV2.load();
           
           snowV1.loop = false;
           snowV2.loop = false;
-          enableStart();
 
         } catch (err) {
           console.warn("Fallback to src. " + err.message);
           snowV1.src = SNOW_VIDEO_URL;
           snowV2.src = SNOW_VIDEO_URL;
-          setTimeout(enableStart, 1000);
         }
-      }
-
-      function enableStart() {
-        if(startBtn.disabled === false) return;
-        startBtn.textContent = "START";
-        startBtn.disabled = false;
-        startBtn.classList.add('ready');
-
-        snowV1.style.opacity = 1; 
-        snowV2.style.opacity = 0;
-        
-        // ロード完了時に即再生を試みる
-        attemptAutoPlay();
-      }
-
-      // 何度でも再生を試みる関数
-      function attemptAutoPlay() {
-        if(snowV1.paused) snowV1.play().catch(()=>{});
-        monitorSnowVideo();
       }
 
       async function initApp() {
         loadAssets();
-        setTimeout(enableStart, 4000);
-        try {
-          await initCamera(currentFacingMode);
-        } catch (err) {
-          showError("カメラエラー:\n" + err.message);
-        }
-        
-        // ★ダメ押し: 画面のどこを触っても再生するように仕込む
-        document.body.addEventListener('touchstart', () => {
-             if(currentSnowVideo.paused) currentSnowVideo.play().catch(()=>{});
-        }, { once: true });
       }
 
       window.onload = initApp;
 
-      startBtn.addEventListener('click', () => {
+      startBtn.addEventListener('click', async () => {
         if (startBtn.disabled) return;
 
-        // ★クリックイベントで確実に再生！
-        snowV1.play().then(() => {
-             // 再生成功したら画面を消す
-             closeStartScreen();
-        }).catch((e) => {
-             // 失敗しても画面は消して、後で再生を試みる
-             console.warn("Manual play blocked?", e);
-             closeStartScreen();
-        });
-        
-        // サブ動画も準備
-        snowV2.play().then(() => snowV2.pause()).catch(() => {});
+        startBtn.textContent = "LOADING...";
+        startBtn.classList.add('loading');
+        startBtn.disabled = true;
+
+        try {
+            await initCamera(currentFacingMode);
+
+            snowV1.style.opacity = 1; 
+            snowV2.style.opacity = 0;
+            
+            await Promise.all([
+                 snowV1.play().catch(e => console.log(e)),
+                 snowV2.play().then(() => snowV2.pause()).catch(e => console.log(e))
+            ]);
+
+            closeStartScreen();
+
+        } catch (err) {
+            showError("起動エラー: " + err.message);
+            startBtn.textContent = "RETRY";
+            startBtn.classList.remove('loading');
+            startBtn.disabled = false;
+        }
       });
 
       function closeStartScreen() {
@@ -355,6 +342,7 @@
         shutterContainer.style.display = 'block';
         flipBtn.style.display = 'flex';
         reloadBtn.style.display = 'flex';
+        
         monitorSnowVideo();
       }
 
@@ -378,6 +366,9 @@
           } catch(e) { throw e; }
         }
         cameraVideo.srcObject = stream;
+        return new Promise((resolve) => {
+            cameraVideo.onloadedmetadata = () => resolve();
+        });
       }
 
       flipBtn.addEventListener('click', async () => {
@@ -393,7 +384,6 @@
         const duration = currentSnowVideo.duration;
         const currentTime = currentSnowVideo.currentTime;
 
-        // ★最強の再生維持装置
         if(currentSnowVideo.paused && duration > 0 && !currentSnowVideo.ended) {
             currentSnowVideo.play().catch(()=>{});
         }
