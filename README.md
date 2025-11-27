@@ -3,7 +3,12 @@
     <meta charset="utf-8">
     <title>Snow AR Camera (Clean Preview & Stable)</title>
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no, maximum-scale=1.0, viewport-fit=cover">
-
+<style>
+  /* 最初の見出し（h1）を消す */
+  h1:first-of-type {
+    display: none !important;
+  }
+</style>
     <style>
       /* --- 基本設定 --- */
       html, body {
