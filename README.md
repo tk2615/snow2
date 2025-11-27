@@ -567,7 +567,7 @@
         document.body.removeChild(a);
       }
     </script>
-  </body>
+
   <style>
   /* タイトル周りの文字（リンク含む）を全部「黒」にする */
   header h1, header h2, header a, .site-title, .project-name {
@@ -586,4 +586,5 @@
   }
   */
 </style>
+  </body>
 </html>
