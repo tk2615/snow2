@@ -1,14 +1,14 @@
 <html>
   <head>
     <meta charset="utf-8">
-    <title>Snow AR Camera (Clean Preview & Stable)</title>
+    <title>Snow AR Camera (Fast & Stable)</title>
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no, maximum-scale=1.0, viewport-fit=cover">
-<style>
-  /* 最初の見出し（h1）を消す */
-  h1:first-of-type {
-    display: none !important;
-  }
-</style>
+    <style>
+      /* 最初の見出し（h1）を消す */
+      h1:first-of-type {
+        display: none !important;
+      }
+    </style>
     <style>
       /* --- 基本設定 --- */
       html, body {
@@ -99,10 +99,12 @@
         display: none; flex-direction: column;
         justify-content: center; align-items: center; color: white;
       }
+      
+      /* ★変更点: プレビューサイズを大きく (65% -> 75%) */
       #preview-img, #preview-video {
-        max-width: 90%; max-height: 65%;
+        max-width: 90%; max-height: 75%; 
         border-radius: 8px; box-shadow: 0 0 20px rgba(0,0,0,0.5);
-        margin-bottom: 30px; object-fit: contain;
+        margin-bottom: 20px; object-fit: contain;
       }
       /* プレビュー動画のクリック無効化（再生バーを出さないため） */
       #preview-video { pointer-events: none; }
@@ -177,8 +179,8 @@
     </div>
 
     <video id="camera-feed" class="hidden-source" autoplay muted playsinline></video>
-    <video id="snow-1" class="hidden-source" src="snow.mp4" muted playsinline webkit-playsinline></video>
-    <video id="snow-2" class="hidden-source" src="snow.mp4" muted playsinline webkit-playsinline></video>
+    
+    <video id="snow-video" class="hidden-source" src="snow.mp4" loop muted playsinline webkit-playsinline preload="auto"></video>
 
     <canvas id="work-canvas"></canvas>
 
@@ -198,14 +200,14 @@
 
     <script>
       const cameraVideo = document.getElementById('camera-feed');
-      const snowV1 = document.getElementById('snow-1');
-      const snowV2 = document.getElementById('snow-2');
-      let currentSnowVideo = snowV1;
-      let nextSnowVideo = snowV2;
-      const FADE_DURATION = 1.0;
-
+      // ★変更点: 1つの動画要素のみ取得
+      const snowVideo = document.getElementById('snow-video');
+      
       const canvas = document.getElementById('work-canvas');
       const ctx = canvas.getContext('2d', { alpha: false, desynchronized: true });
+      
+      // ★軽量化: 合成用バッファは不要になったので削除して直接描画するか、
+      // サイズ調整用として残す。今回はサイズ調整（アスペクト比維持）のために残すが、処理は簡素化する。
       const bufferCanvas = document.createElement('canvas');
       const bufferCtx = bufferCanvas.getContext('2d', { alpha: false, desynchronized: true });
 
@@ -261,9 +263,9 @@
 
       async function initApp() {
         try {
-          snowV1.loop = false;
-          snowV2.loop = false;
-          await snowV1.play().catch(e => console.warn(e));
+          // ★変更点: 単純に再生するだけ
+          await snowVideo.play().catch(e => console.warn(e));
+          
           await initCamera(currentFacingMode);
           
           updateDimensions();
@@ -283,7 +285,8 @@
         shutterContainer.style.display = 'block';
         flipBtn.style.display = 'flex';
         reloadBtn.style.display = 'flex';
-        if(currentSnowVideo.paused) currentSnowVideo.play().catch(()=>{});
+        // 再生保証
+        if(snowVideo.paused) snowVideo.play().catch(()=>{});
       });
 
       async function initCamera(facingMode) {
@@ -292,7 +295,6 @@
         }
         let stream = null;
         try {
-          // ★軽量化: 720p (1280x720) を指定して安定化
           stream = await navigator.mediaDevices.getUserMedia({
             video: { 
               facingMode: facingMode,
@@ -341,7 +343,7 @@
       }
 
       // ==========================================
-      // 描画ループ (30fps)
+      // 描画ループ (シンプル化)
       // ==========================================
       function drawCompositeFrame(timestamp) {
         requestAnimationFrame(drawCompositeFrame);
@@ -358,76 +360,45 @@
         const vw = cachedWidth;
         const vh = cachedHeight;
         
-        bufferCtx.globalCompositeOperation = 'source-over';
-        bufferCtx.fillStyle = '#000000';
-        bufferCtx.fillRect(0, 0, vw, vh);
-
-        const duration = currentSnowVideo.duration;
-        const currentTime = currentSnowVideo.currentTime;
-
-        if (duration && duration > 0) {
-          const timeLeft = duration - currentTime;
-          
-          if (timeLeft <= FADE_DURATION) {
-            // ★安定化: 動画が止まっていたら再生
-            if (nextSnowVideo.paused) nextSnowVideo.play().catch(()=>{});
-            
-            const alphaCurrent = Math.max(0, timeLeft / FADE_DURATION);
-            const alphaNext = 1.0 - alphaCurrent;
-            drawSnowToBuffer(currentSnowVideo, vw, vh, alphaCurrent);
-            drawSnowToBuffer(nextSnowVideo, vw, vh, alphaNext);
-          } else {
-            drawSnowToBuffer(currentSnowVideo, vw, vh, 1.0);
-            // 待機中の動画は停止
-            if (!nextSnowVideo.paused) {
-              nextSnowVideo.pause();
-              nextSnowVideo.currentTime = 0;
-            }
-          }
-
-          if (currentSnowVideo.ended || timeLeft <= 0) {
-            const temp = currentSnowVideo;
-            currentSnowVideo = nextSnowVideo;
-            nextSnowVideo = temp;
-            nextSnowVideo.pause();
-            nextSnowVideo.currentTime = 0;
-          }
-        } else {
-            // 再生が開始されてない場合の保険
-            if(currentSnowVideo.paused) currentSnowVideo.play().catch(()=>{});
-        }
-
+        // --- 1. カメラ描画 ---
         ctx.globalCompositeOperation = 'source-over';
         ctx.drawImage(cameraVideo, 0, 0, vw, vh);
-        ctx.globalCompositeOperation = 'screen';
-        ctx.drawImage(bufferCanvas, 0, 0);
-      }
 
-      function drawSnowToBuffer(video, cw, ch, alpha) {
-        if (alpha <= 0.01) return;
-        const videoW = video.videoWidth;
-        const videoH = video.videoHeight;
-        if (videoW === 0 || videoH === 0) return;
-
-        const canvasAspect = cw / ch;
-        const videoAspect = videoW / videoH;
-        let sx, sy, sw, sh;
-
-        if (canvasAspect > videoAspect) {
-          sw = videoW;
-          sh = videoW / canvasAspect;
-          sx = 0;
-          sy = (videoH - sh) / 2;
-        } else {
-          sh = videoH;
-          sw = videoH * canvasAspect;
-          sx = (videoW - sw) / 2;
-          sy = 0;
+        // --- 2. 雪動画描画（アスペクト比維持して描画） ---
+        // 動画が止まってたら再生
+        if(snowVideo.paused && !snowVideo.ended) {
+             snowVideo.play().catch(()=>{});
         }
 
-        bufferCtx.globalAlpha = alpha;
-        bufferCtx.drawImage(video, sx, sy, sw, sh, 0, 0, cw, ch);
-        bufferCtx.globalAlpha = 1.0;
+        // バッファをクリアせず上書き (最適化)
+        // アスペクト比計算
+        const videoW = snowVideo.videoWidth;
+        const videoH = snowVideo.videoHeight;
+
+        if (videoW > 0 && videoH > 0) {
+            const canvasAspect = vw / vh;
+            const videoAspect = videoW / videoH;
+            let sx, sy, sw, sh;
+
+            if (canvasAspect > videoAspect) {
+                // キャンバスの方が横長 -> 動画の上下をカット
+                sw = videoW;
+                sh = videoW / canvasAspect;
+                sx = 0;
+                sy = (videoH - sh) / 2;
+            } else {
+                // キャンバスの方が縦長 -> 動画の左右をカット
+                sh = videoH;
+                sw = videoH * canvasAspect;
+                sx = (videoW - sw) / 2;
+                sy = 0;
+            }
+
+            // 直接Canvasに「screen」合成で描画 (バッファを経由しない方が高速だが、
+            // 拡大縮小の品質確保のために drawImage で切り抜き描画)
+            ctx.globalCompositeOperation = 'screen';
+            ctx.drawImage(snowVideo, sx, sy, sw, sh, 0, 0, vw, vh);
+        }
       }
 
       // ==========================================
@@ -454,7 +425,6 @@
           btnSaveVideo.style.display = 'block';
           
           previewVideo.src = url;
-          // ★プレビュー再生 (ミュートで自動再生)
           previewVideo.muted = true; 
           previewVideo.play().catch(()=>{});
           
@@ -468,7 +438,7 @@
         previewVideo.src = "";
         previewImg.src = "";
         // プレビュー終了時に雪動画を再開
-        if(currentSnowVideo.paused) currentSnowVideo.play().catch(()=>{});
+        if(snowVideo.paused) snowVideo.play().catch(()=>{});
         shutterContainer.style.display = 'block';
         flipBtn.style.display = 'flex';
         reloadBtn.style.display = 'flex';
@@ -479,7 +449,7 @@
       document.addEventListener("visibilitychange", () => {
         if (document.visibilityState === "visible") {
           if (previewModal.style.display === 'none' && startScreen.style.display === 'none') {
-             if (currentSnowVideo.paused) currentSnowVideo.play().catch(()=>{});
+             if (snowVideo.paused) snowVideo.play().catch(()=>{});
              if (cameraVideo.paused) cameraVideo.play().catch(()=>{});
           }
         }
