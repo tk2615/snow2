@@ -67,13 +67,13 @@
       }
 
       #howto-img {
-        width: 100%; height: 100%;
+        width: 120%; height: 120%;
         object-fit: contain; background-color: transparent;
         filter: drop-shadow(0 0 10px rgba(0,0,0,0.5));
       }
       
       #start-btn {
-        width: 80%; max-width: 300px; padding: 18px 0; 
+        width: 60%; max-width: 300px; padding: 18px 0; 
         font-size: 20px; font-family: sans-serif;
         background: white; color: black;
         border: none; border-radius: 50px;
