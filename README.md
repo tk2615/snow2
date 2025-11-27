@@ -1,7 +1,7 @@
 <html>
   <head>
     <meta charset="utf-8">
-    <title>Snow AR Camera (Crossfade Loop)</title>
+    <title>Snow AR Camera (Preview Mode)</title>
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no, maximum-scale=1.0, viewport-fit=cover">
 
     <style>
@@ -50,8 +50,8 @@
         backdrop-filter: blur(4px);
         -webkit-tap-highlight-color: transparent; 
       }
-      #reload-btn:active { background: rgba(255, 255, 255, 0.6); }
 
+      /* スタート画面 */
       #start-screen {
         position: fixed; top: 0; left: 0; width: 100%; height: 100%;
         background-color: rgba(0,0,0,0.9);
@@ -73,6 +73,45 @@
         white-space: pre-wrap;
       }
 
+      /* --- プレビュー画面（新機能） --- */
+      #preview-modal {
+        position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+        background-color: rgba(0,0,0,0.95); /* 背景を暗く */
+        z-index: 2000; /* 最前面 */
+        display: none; /* 最初は隠す */
+        flex-direction: column;
+        justify-content: center;
+        align-items: center;
+        color: white;
+      }
+      
+      /* プレビュー画像・動画のスタイル */
+      #preview-img, #preview-video {
+        max-width: 90%;
+        max-height: 70%;
+        border-radius: 8px;
+        box-shadow: 0 0 20px rgba(0,0,0,0.5);
+        margin-bottom: 20px;
+        object-fit: contain;
+      }
+      
+      /* 案内テキスト */
+      .preview-text {
+        font-size: 14px; margin-bottom: 20px; color: #ccc;
+      }
+
+      /* ボタン群 */
+      .preview-buttons {
+        display: flex; gap: 20px;
+      }
+      .btn {
+        padding: 12px 30px; border-radius: 25px; border: none; font-size: 16px; font-weight: bold; cursor: pointer;
+      }
+      .btn-save { background-color: #ff3b30; color: white; }
+      .btn-close { background-color: #555; color: white; }
+
+
+      /* シャッターボタン */
       #shutter-container {
         position: fixed; bottom: 30px; left: 50%;
         transform: translateX(-50%);
@@ -122,8 +161,20 @@
       <div id="status-msg"></div>
     </div>
 
+    <div id="preview-modal">
+      <img id="preview-img">
+      <video id="preview-video" controls playsinline></video>
+      
+      <p id="preview-msg-photo" class="preview-text">画像長押しで保存してください</p>
+      
+      <div class="preview-buttons">
+        <button id="btn-save-video" class="btn btn-save" style="display:none;">動画を保存</button>
+        <button id="btn-close" class="btn btn-close">閉じる</button>
+      </div>
+    </div>
+
+
     <video id="camera-feed" class="hidden-source" autoplay muted playsinline></video>
-    
     <video id="snow-1" class="hidden-source" src="snow.mp4" muted playsinline webkit-playsinline></video>
     <video id="snow-2" class="hidden-source" src="snow.mp4" muted playsinline webkit-playsinline></video>
 
@@ -140,14 +191,11 @@
 
     <script>
       const cameraVideo = document.getElementById('camera-feed');
-      // 動画2つ
       const snowV1 = document.getElementById('snow-1');
       const snowV2 = document.getElementById('snow-2');
-      
-      // クロスフェード管理用の変数
-      let currentSnowVideo = snowV1; // メインで流れてる方
-      let nextSnowVideo = snowV2;    // 次に待機してる方
-      const FADE_DURATION = 1.0;     // 1秒かけてクロスフェードさせる
+      let currentSnowVideo = snowV1;
+      let nextSnowVideo = snowV2;
+      const FADE_DURATION = 1.0;
 
       const canvas = document.getElementById('work-canvas');
       const ctx = canvas.getContext('2d');
@@ -159,6 +207,16 @@
       const startScreen = document.getElementById('start-screen');
       const startBtn = document.getElementById('start-btn');
       const statusMsg = document.getElementById('status-msg');
+
+      // プレビュー関連のDOM
+      const previewModal = document.getElementById('preview-modal');
+      const previewImg = document.getElementById('preview-img');
+      const previewVideo = document.getElementById('preview-video');
+      const previewMsgPhoto = document.getElementById('preview-msg-photo');
+      const btnSaveVideo = document.getElementById('btn-save-video');
+      const btnClose = document.getElementById('btn-close');
+      
+      let currentPreviewUrl = null; // 生成したURLを保持（破棄用）
       
       const radius = progressCircle.r.baseVal.value;
       const circumference = radius * 2 * Math.PI;
@@ -183,7 +241,62 @@
       }
 
       // ==========================================
-      // 1. 起動処理
+      // プレビュー機能
+      // ==========================================
+      function showPreview(type, url, filename) {
+        // 現在のプレビューURLがあればメモリ解放
+        if (currentPreviewUrl) {
+          URL.revokeObjectURL(currentPreviewUrl);
+        }
+        currentPreviewUrl = url;
+
+        // モーダルを表示
+        previewModal.style.display = 'flex';
+        // シャッターボタンなどは隠すか、モーダルのz-indexが高いのでそのままでも良いが、誤操作防止で隠す
+        shutterContainer.style.display = 'none';
+
+        if (type === 'photo') {
+          // 静止画モード
+          previewImg.style.display = 'block';
+          previewVideo.style.display = 'none';
+          previewMsgPhoto.style.display = 'block'; // 「長押しで保存」
+          btnSaveVideo.style.display = 'none'; // 動画保存ボタンは隠す
+
+          previewImg.src = url;
+
+        } else {
+          // 動画モード
+          previewImg.style.display = 'none';
+          previewVideo.style.display = 'block';
+          previewMsgPhoto.style.display = 'none';
+          btnSaveVideo.style.display = 'block'; // 動画保存ボタンを表示
+
+          previewVideo.src = url;
+          previewVideo.play().catch(()=>{}); // 自動再生トライ
+
+          // 動画保存ボタンの挙動設定
+          btnSaveVideo.onclick = () => {
+            downloadFile(url, filename);
+          };
+        }
+      }
+
+      function closePreview() {
+        previewModal.style.display = 'none';
+        previewVideo.pause();
+        previewVideo.src = "";
+        previewImg.src = "";
+        
+        // カメラ画面のUIを復帰
+        shutterContainer.style.display = 'block';
+      }
+
+      // 閉じるボタンイベント
+      btnClose.addEventListener('click', closePreview);
+
+
+      // ==========================================
+      // 起動処理
       // ==========================================
       startBtn.addEventListener('click', async () => {
         startBtn.disabled = true;
@@ -191,13 +304,10 @@
         log("初期化中...");
 
         try {
-          // 動画の準備
-          snowV1.loop = false; // ループはJSで制御するから切る
+          snowV1.loop = false;
           snowV2.loop = false;
-          
           await snowV1.play();
           
-          // カメラ取得
           let stream = null;
           try {
             stream = await navigator.mediaDevices.getUserMedia({
@@ -229,7 +339,7 @@
       });
 
       // ==========================================
-      // 2. 描画ループ（クロスフェードロジック）
+      // 描画ループ (クロスフェード)
       // ==========================================
       function drawCompositeFrame() {
         const cw = cameraVideo.videoWidth;
@@ -240,7 +350,6 @@
            return;
         }
 
-        // サイズ同期
         if (canvas.width !== cw || canvas.height !== ch) {
           canvas.width = cw;
           canvas.height = ch;
@@ -248,86 +357,56 @@
           bufferCanvas.height = ch;
         }
 
-        // --- バッファ（裏画面）のクリア ---
         bufferCtx.globalCompositeOperation = 'source-over';
         bufferCtx.fillStyle = '#000000';
         bufferCtx.fillRect(0, 0, cw, ch);
 
-        // ===========================================
-        // ★クロスフェード計算ロジック
-        // ===========================================
-        
         const duration = currentSnowVideo.duration;
         const currentTime = currentSnowVideo.currentTime;
 
-        // メタデータ読み込み前などでdurationがNaNのときは何もしない
         if (duration && duration > 0) {
-          
-          // 1. 残り時間が FADE_DURATION を切ったら、次の動画を再生開始＆重ねて描画
           const timeLeft = duration - currentTime;
           
           if (timeLeft <= FADE_DURATION) {
-            // 次の動画が止まってたら再生開始
             if (nextSnowVideo.paused) {
               nextSnowVideo.currentTime = 0;
               nextSnowVideo.play().catch(()=>{});
             }
-
-            // 透明度の計算
-            // currentは 1.0 -> 0.0 へ
-            // next は 0.0 -> 1.0 へ
-            const alphaCurrent = Math.max(0, timeLeft / FADE_DURATION); // フェードアウト
-            const alphaNext = 1.0 - alphaCurrent;                       // フェードイン
-
-            // --- 現在の動画を描画（薄くなっていく） ---
+            const alphaCurrent = Math.max(0, timeLeft / FADE_DURATION);
+            const alphaNext = 1.0 - alphaCurrent;
             drawSnowToBuffer(currentSnowVideo, cw, ch, alphaCurrent);
-            
-            // --- 次の動画を描画（濃くなっていく） ---
             drawSnowToBuffer(nextSnowVideo, cw, ch, alphaNext);
-
           } else {
-            // まだフェード期間じゃないなら、現在の動画だけを全力(alpha=1)で描画
             drawSnowToBuffer(currentSnowVideo, cw, ch, 1.0);
-            
-            // 次の動画は待機（念のため止めておく）
             if (!nextSnowVideo.paused) {
               nextSnowVideo.pause();
               nextSnowVideo.currentTime = 0;
             }
           }
 
-          // 2. 現在の動画が終わったら、役割を交代（スワップ）
           if (currentSnowVideo.ended || timeLeft <= 0) {
-            // 交代！
             const temp = currentSnowVideo;
             currentSnowVideo = nextSnowVideo;
             nextSnowVideo = temp;
-
-            // 終わった方は停止して巻き戻し
             nextSnowVideo.pause();
             nextSnowVideo.currentTime = 0;
           }
         }
 
-        // --- メイン合成（カメラの上にバッファをスクリーン合成） ---
         ctx.globalCompositeOperation = 'source-over';
-        ctx.drawImage(cameraVideo, 0, 0, cw, ch); // カメラ
-
+        ctx.drawImage(cameraVideo, 0, 0, cw, ch);
         ctx.globalCompositeOperation = 'screen';
-        ctx.drawImage(bufferCanvas, 0, 0); // 雪（クロスフェード済み）
+        ctx.drawImage(bufferCanvas, 0, 0);
 
         requestAnimationFrame(drawCompositeFrame);
       }
 
-      // ヘルパー関数：雪動画をバッファに描画する（クロップ＆透明度指定）
       function drawSnowToBuffer(video, cw, ch, alpha) {
-        if (alpha <= 0.01) return; // ほぼ見えないなら描かない
-
+        if (alpha <= 0.01) return;
         const vw = video.videoWidth;
         const vh = video.videoHeight;
         if (vw === 0 || vh === 0) return;
 
-        // クロップ計算
         const videoAspect = vw / vh;
         const canvasAspect = cw / ch;
         let sx, sy, sw, sh;
@@ -344,15 +423,14 @@
           sy = 0;
         }
 
-        // 指定された透明度で描画
         bufferCtx.globalAlpha = alpha;
         bufferCtx.drawImage(video, sx, sy, sw, sh, 0, 0, cw, ch);
-        bufferCtx.globalAlpha = 1.0; // リセット
+        bufferCtx.globalAlpha = 1.0;
       }
 
 
       // ==========================================
-      // 3. 撮影・録画機能（前回と同じ）
+      // 撮影・録画機能
       // ==========================================
       function takePhoto() {
         if (shutterLock) return;
@@ -362,8 +440,9 @@
         flash.style.opacity = 1;
         setTimeout(() => flash.style.opacity = 0, 200);
 
+        // ★ 変更点：ダウンロードせずにプレビューを表示
         const dataURL = canvas.toDataURL('image/png');
-        downloadFile(dataURL, `snow_photo_${Date.now()}.png`);
+        showPreview('photo', dataURL);
 
         setTimeout(() => { shutterLock = false; }, 1000);
       }
@@ -400,7 +479,10 @@
           const blob = new Blob(recordedChunks, { type: selectedMimeType || 'video/webm' });
           const url = URL.createObjectURL(blob);
           let ext = (selectedMimeType && selectedMimeType.includes('mp4')) ? 'mp4' : 'webm';
-          downloadFile(url, `snow_video_${Date.now()}.${ext}`);
+          
+          // ★ 変更点：ダウンロードせずにプレビューを表示
+          showPreview('video', url, `snow_video_${Date.now()}.${ext}`);
+          
           recordedChunks = [];
         };
 
@@ -426,7 +508,6 @@
         else stopRecording();
       }
 
-      // イベント
       const startPress = (e) => {
         if(e.cancelable) e.preventDefault();
         if (isPressing) return;
