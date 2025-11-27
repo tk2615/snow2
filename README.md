@@ -1,7 +1,7 @@
 <html>
   <head>
     <meta charset="utf-8">
-    <title>Snow AR Camera (Performance Tuned)</title>
+    <title>Snow AR Camera (FHD Lightweight)</title>
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no, maximum-scale=1.0, viewport-fit=cover">
 
     <style>
@@ -33,10 +33,10 @@
         background: rgba(0, 0, 0, 0.3);
         border: 1px solid rgba(255, 255, 255, 0.5);
         border-radius: 50%; color: white; cursor: pointer;
-        display: none; /* 最初は隠す */
-        justify-content: center; align-items: center;
+        display: flex; justify-content: center; align-items: center;
         backdrop-filter: blur(4px); -webkit-tap-highlight-color: transparent; 
         transition: background 0.2s;
+        display: none;
       }
       .icon-btn:active { background: rgba(255, 255, 255, 0.3); }
       .icon-btn svg { width: 24px; height: 24px; fill: white; }
@@ -196,7 +196,6 @@
       const FADE_DURATION = 1.0;
 
       const canvas = document.getElementById('work-canvas');
-      // ★軽量化: alpha:false で透明度計算を省略
       const ctx = canvas.getContext('2d', { alpha: false, desynchronized: true });
       const bufferCanvas = document.createElement('canvas');
       const bufferCtx = bufferCanvas.getContext('2d', { alpha: false, desynchronized: true });
@@ -238,16 +237,11 @@
 
       let currentFacingMode = 'environment';
 
-      // ★軽量化用: サイズ情報のキャッシュ変数
       let cachedWidth = 0;
       let cachedHeight = 0;
-      let cachedScreenW = 0;
-      let cachedScreenH = 0;
       let needsResize = true;
-
-      // ★軽量化用: FPS制御用変数
       let lastFrameTime = 0;
-      const TARGET_FPS = 30; // 30fpsに制限して負荷を半減
+      const TARGET_FPS = 30; 
       const FRAME_INTERVAL = 1000 / TARGET_FPS;
 
       function showError(msg) {
@@ -263,8 +257,8 @@
           await snowV1.play().catch(e => console.warn(e));
           await initCamera(currentFacingMode);
           
-          updateDimensions(); // 初回サイズ計算
-          drawCompositeFrame(0); // ループ開始
+          updateDimensions();
+          drawCompositeFrame(0);
 
         } catch (err) {
           showError("カメラエラー:\n" + err.message);
@@ -272,8 +266,6 @@
       }
 
       window.onload = initApp;
-      
-      // リサイズ時にフラグを立てる
       window.addEventListener('resize', () => { needsResize = true; });
 
       startBtn.addEventListener('click', () => {
@@ -291,8 +283,13 @@
         }
         let stream = null;
         try {
+          // ★変更点：フルHD (1920x1080) を要求して負荷を下げる
           stream = await navigator.mediaDevices.getUserMedia({
-            video: { facingMode: facingMode, width: { ideal: 4096 }, height: { ideal: 2160 } },
+            video: { 
+              facingMode: facingMode,
+              width: { ideal: 1920 }, // 4K(4096) -> FHD(1920)
+              height: { ideal: 1080 } 
+            },
             audio: false 
           });
         } catch (err) {
@@ -303,7 +300,7 @@
         cameraVideo.srcObject = stream;
         return new Promise((resolve) => {
           cameraVideo.onloadedmetadata = () => {
-            needsResize = true; // カメラが変わったらサイズ再計算
+            needsResize = true;
             resolve();
           };
         });
@@ -317,7 +314,6 @@
         finally { flipBtn.style.pointerEvents = 'auto'; flipBtn.style.opacity = 1; }
       });
 
-      // サイズ計算を切り出し（ループ内で毎回やると重い）
       function updateDimensions() {
         const vw = cameraVideo.videoWidth;
         const vh = cameraVideo.videoHeight;
@@ -325,10 +321,7 @@
 
         cachedWidth = vw;
         cachedHeight = vh;
-        cachedScreenW = window.innerWidth;
-        cachedScreenH = window.innerHeight;
 
-        // Canvasサイズ更新
         if (canvas.width !== vw || canvas.height !== vh) {
           canvas.width = vw;
           canvas.height = vh;
@@ -339,32 +332,27 @@
       }
 
       // ==========================================
-      // 描画ループ (30fps制限・最適化版)
+      // 描画ループ (30fps)
       // ==========================================
       function drawCompositeFrame(timestamp) {
         requestAnimationFrame(drawCompositeFrame);
 
-        // ★軽量化: FPS制限 (30fps)
         const elapsed = timestamp - lastFrameTime;
         if (elapsed < FRAME_INTERVAL) return;
         lastFrameTime = timestamp - (elapsed % FRAME_INTERVAL);
 
-        // 必要ならサイズ更新
         if (needsResize || cachedWidth === 0) {
           updateDimensions();
-          if (cachedWidth === 0) return; // まだカメラ準備できてない
+          if (cachedWidth === 0) return;
         }
 
-        // 変数をキャッシュから読み出し（DOMアクセスを減らす）
         const vw = cachedWidth;
         const vh = cachedHeight;
         
-        // バッファクリア
         bufferCtx.globalCompositeOperation = 'source-over';
         bufferCtx.fillStyle = '#000000';
         bufferCtx.fillRect(0, 0, vw, vh);
 
-        // 雪描画
         const duration = currentSnowVideo.duration;
         const currentTime = currentSnowVideo.currentTime;
 
@@ -397,7 +385,6 @@
           }
         }
 
-        // メイン合成
         ctx.globalCompositeOperation = 'source-over';
         ctx.drawImage(cameraVideo, 0, 0, vw, vh);
         ctx.globalCompositeOperation = 'screen';
