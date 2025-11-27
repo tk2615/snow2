@@ -1,7 +1,8 @@
+<!DOCTYPE html>
 <html>
   <head>
     <meta charset="utf-8">
-    <title>Snow AR Camera (Preview 75%)</title>
+    <title>Snow AR Camera (Auto & Fallback)</title>
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no, maximum-scale=1.0, viewport-fit=cover">
     <style>
       h1:first-of-type { display: none !important; }
@@ -104,7 +105,7 @@
         justify-content: center; align-items: center; color: white;
       }
 
-      /* ★修正点: プレビュー画面を75%に縮小 */
+      /* プレビューサイズ 75% */
       #preview-img, #preview-video {
         max-width: 75%; 
         max-height: 75%;
@@ -136,7 +137,7 @@
       #reload-btn { right: 20px; }
       #flip-btn { left: 20px; }
 
-      /* シャッターボタン（1.5倍のまま） */
+      /* シャッターボタン（1.5倍） */
       #shutter-container {
         position: fixed; bottom: 40px; 
         left: 50%;
@@ -293,42 +294,74 @@
           
           snowV1.loop = false;
           snowV2.loop = false;
+          
+          // ★ここで自動再生を試みる！
+          tryAutoplay();
 
         } catch (err) {
           console.warn("Fallback to src. " + err.message);
           snowV1.src = SNOW_VIDEO_URL;
           snowV2.src = SNOW_VIDEO_URL;
+          tryAutoplay();
         }
+      }
+
+      function tryAutoplay() {
+        // スタート画面の裏で透明度1にして再生を試みる
+        snowV1.style.opacity = 1; 
+        snowV2.style.opacity = 0;
+        
+        snowV1.play().catch(e => {
+            console.log("Auto-play blocked (Waiting for button):", e);
+        });
+        
+        // 監視ループも回し始める
+        monitorSnowVideo();
       }
 
       async function initApp() {
         loadAssets();
+        // カメラの初期化はSTARTボタンを押した時にやるか、
+        // ここでやるか迷うとこやけど、アクセス直後の許可ダイアログを嫌うなら
+        // ボタン押下時まで待ってもええ。
+        // 今回は「動画再生」を優先したいから、カメラも裏で準備しとくで。
+        try {
+            await initCamera(currentFacingMode);
+        } catch(e) {
+            console.log("Camera waiting for interaction");
+        }
       }
 
       window.onload = initApp;
 
+      // ★ボタンクリック時の処理（ダメ押しの再生）
       startBtn.addEventListener('click', async () => {
         if (startBtn.disabled) return;
 
+        // 1. ローディング表示（カメラ許可待ちなどのため）
         startBtn.textContent = "LOADING...";
         startBtn.classList.add('loading');
         startBtn.disabled = true;
 
         try {
-            await initCamera(currentFacingMode);
+            // 2. カメラがまだなら初期化
+            if (!cameraVideo.srcObject) {
+                await initCamera(currentFacingMode);
+            }
 
-            snowV1.style.opacity = 1; 
-            snowV2.style.opacity = 0;
-            
-            await Promise.all([
-                 snowV1.play().catch(e => console.log(e)),
-                 snowV2.play().then(() => snowV2.pause()).catch(e => console.log(e))
-            ]);
+            // 3. 動画が止まってたら、ここで強制再生！
+            // （自動再生がブロックされてた場合はここで動く）
+            if (currentSnowVideo.paused) {
+                await currentSnowVideo.play();
+            }
+            // 2つ目の動画も準備運動
+            snowV2.play().then(() => snowV2.pause()).catch(() => {});
 
+            // 4. 全部OKなら画面を消す
             closeStartScreen();
 
         } catch (err) {
-            showError("起動エラー: " + err.message);
+            showError("エラー: " + err.message);
             startBtn.textContent = "RETRY";
             startBtn.classList.remove('loading');
             startBtn.disabled = false;
@@ -341,8 +374,6 @@
         shutterContainer.style.display = 'block';
         flipBtn.style.display = 'flex';
         reloadBtn.style.display = 'flex';
-        
-        monitorSnowVideo();
       }
 
       async function initCamera(facingMode) {
@@ -351,6 +382,7 @@
         }
         let stream = null;
         try {
+          // HD画質
           stream = await navigator.mediaDevices.getUserMedia({
             video: { 
               facingMode: facingMode,
@@ -365,7 +397,7 @@
           } catch(e) { throw e; }
         }
         cameraVideo.srcObject = stream;
-        return new Promise((resolve) => {
+        return new Promise(resolve => {
             cameraVideo.onloadedmetadata = () => resolve();
         });
       }
@@ -383,7 +415,8 @@
         const duration = currentSnowVideo.duration;
         const currentTime = currentSnowVideo.currentTime;
 
-        if(currentSnowVideo.paused && duration > 0 && !currentSnowVideo.ended) {
+        // 再生維持
+        if(currentSnowVideo.paused && duration > 0 && !currentSnowVideo.ended && startScreen.style.display === 'none') {
             currentSnowVideo.play().catch(()=>{});
         }
 
