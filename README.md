@@ -1,8 +1,7 @@
-<!DOCTYPE html>
 <html>
   <head>
     <meta charset="utf-8">
-    <title>Snow AR Camera (Preview 75%)</title>
+    <title>Snow AR Camera (Auto Start)</title>
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no, maximum-scale=1.0, viewport-fit=cover">
     <style>
       h1:first-of-type { display: none !important; }
@@ -47,46 +46,19 @@
         pointer-events: none; opacity: 0; z-index: -1;
       }
 
-      /* スタート画面 */
+      /* スタート画面：初期表示を none に変更 */
       #start-screen {
         position: fixed; top: 0; left: 0; width: 100%; height: 100%;
         background-color: rgba(0, 0, 0, 0.85); 
         z-index: 3000;
-        display: flex; flex-direction: column;
+        display: none; /* ★ここを変更：最初から非表示 */
+        flex-direction: column;
         justify-content: space-between; align-items: center;
         padding: 40px 20px; box-sizing: border-box;
         transition: opacity 0.3s ease;
       }
 
-      #howto-container {
-        flex: 1; width: 100%; display: flex;
-        justify-content: center; align-items: center;
-        overflow: hidden; margin-bottom: 20px;
-      }
-
-      #howto-img {
-        width: 120%; height: 120%;
-        object-fit: contain; background-color: transparent;
-        filter: drop-shadow(0 0 10px rgba(0,0,0,0.5));
-      }
-       
-      /* スタートボタン */
-      #start-btn {
-        width: 60%; max-width: 300px; padding: 18px 0; 
-        font-size: 20px; font-family: sans-serif;
-        background: white; color: black; 
-        border: none; border-radius: 50px;
-        cursor: pointer; font-weight: 900; letter-spacing: 2px;
-        box-shadow: 0 4px 15px rgba(255,255,255,0.2);
-        transition: all 0.3s; margin-bottom: 40px; 
-      }
-      #start-btn:active { transform: scale(0.95); }
-      
-      #start-btn.loading {
-        background: #999; color: #eee;
-        cursor: wait;
-        transform: scale(0.95);
-      }
+      /* ... (中略：他のスタイルはそのまま) ... */
 
       #error-overlay {
         position: fixed; top: 0; left: 0; width: 100%; height: 100%;
@@ -105,7 +77,7 @@
         justify-content: center; align-items: center; color: white;
       }
 
-      /* ★修正点: プレビュー画面を75%に縮小 */
+      /* プレビュー画面を75%に縮小 */
       #preview-img, #preview-video {
         max-width: 75%; 
         max-height: 75%;
@@ -130,14 +102,14 @@
         display: flex; justify-content: center; align-items: center;
         backdrop-filter: blur(4px); -webkit-tap-highlight-color: transparent; 
         transition: background 0.2s;
-        display: none;
+        display: none; /* 初期は非表示、JSで表示 */
       }
       .icon-btn:active { background: rgba(255, 255, 255, 0.3); }
       .icon-btn svg { width: 24px; height: 24px; fill: white; }
       #reload-btn { right: 20px; }
       #flip-btn { left: 20px; }
 
-      /* シャッターボタン（1.5倍のまま） */
+      /* シャッターボタン */
       #shutter-container {
         position: fixed; bottom: 40px; 
         left: 50%;
@@ -145,7 +117,7 @@
         transform: translateX(-50%) scale(1.5);
         z-index: 100; cursor: pointer;
         -webkit-tap-highlight-color: transparent; user-select: none;
-        display: none;
+        display: none; /* 初期は非表示、JSで表示 */
       }
       .progress-ring {
         position: absolute; top: 0; left: 0; width: 80px; height: 80px; transform: rotate(-90deg);
@@ -171,7 +143,6 @@
   </head>
 
   <body>
-
     <button id="reload-btn" class="icon-btn" onclick="location.reload()">
       <svg viewBox="0 0 24 24"><path d="M17.65 6.35C16.2 4.9 14.21 4 12 4c-4.42 0-7.99 3.58-7.99 8s3.57 8 7.99 8c3.73 0 6.84-2.55 7.73-6h-2.08c-.82 2.33-3.04 4-5.65 4-3.31 0-6-2.69-6-6s2.69-6 6-6c1.66 0 3.14.69 4.22 1.78L13 11h7V4l-2.35 2.35z"/></svg>
     </button>
@@ -240,7 +211,6 @@
       const shutterContainer = document.getElementById('shutter-container');
       const progressCircle = document.querySelector('.progress-ring__circle');
       const startScreen = document.getElementById('start-screen');
-      const startBtn = document.getElementById('start-btn');
       const flipBtn = document.getElementById('flip-btn');
       const reloadBtn = document.getElementById('reload-btn');
 
@@ -302,49 +272,41 @@
         }
       }
 
+      // ★ここが最大の変更点や！
+      // ページ読み込み時に即実行する関数
       async function initApp() {
+        // アセットの読み込み開始
         loadAssets();
-      }
-
-      window.onload = initApp;
-
-      startBtn.addEventListener('click', async () => {
-        if (startBtn.disabled) return;
-
-        startBtn.textContent = "LOADING...";
-        startBtn.classList.add('loading');
-        startBtn.disabled = true;
 
         try {
-            await initCamera(currentFacingMode);
+          // カメラの初期化（ここで許可ポップアップが出るはずや）
+          await initCamera(currentFacingMode);
 
-            snowV1.style.opacity = 1; 
-            snowV2.style.opacity = 0;
-            
-            await Promise.all([
-                 snowV1.play().catch(e => console.log(e)),
-                 snowV2.play().then(() => snowV2.pause()).catch(e => console.log(e))
-            ]);
+          // 雪動画の準備
+          snowV1.style.opacity = 1; 
+          snowV2.style.opacity = 0;
+          
+          // 動画の再生開始
+          await Promise.all([
+               snowV1.play().catch(e => console.log("Snow AutoPlay Error:", e)),
+               snowV2.play().then(() => snowV2.pause()).catch(e => console.log("Snow AutoPlay Error:", e))
+          ]);
 
-            closeStartScreen();
+          // UIの表示
+          shutterContainer.style.display = 'block';
+          flipBtn.style.display = 'flex';
+          reloadBtn.style.display = 'flex';
+          
+          // ループ監視開始
+          monitorSnowVideo();
 
         } catch (err) {
-            showError("起動エラー: " + err.message);
-            startBtn.textContent = "RETRY";
-            startBtn.classList.remove('loading');
-            startBtn.disabled = false;
+          showError("カメラ起動エラー: " + err.message + "\n(ブラウザ設定でカメラを許可してください)");
         }
-      });
-
-      function closeStartScreen() {
-        startScreen.style.opacity = '0';
-        setTimeout(() => { startScreen.style.display = 'none'; }, 300);
-        shutterContainer.style.display = 'block';
-        flipBtn.style.display = 'flex';
-        reloadBtn.style.display = 'flex';
-        
-        monitorSnowVideo();
       }
+
+      // ウィンドウ読み込み完了時に自動スタート
+      window.onload = initApp;
 
       async function initCamera(facingMode) {
         if (cameraVideo.srcObject) {
