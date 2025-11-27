@@ -1,8 +1,7 @@
-<!DOCTYPE html>
 <html>
   <head>
     <meta charset="utf-8">
-    <title>Snow AR Camera (Hybrid & Lite)</title>
+    <title>Snow AR Camera (Safe Mode)</title>
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no, maximum-scale=1.0, viewport-fit=cover">
     <style>
       h1:first-of-type { display: none !important; }
@@ -34,7 +33,7 @@
         position: absolute; top: 0; left: 0; width: 100%; height: 100%;
         object-fit: cover;
         z-index: 2;
-        mix-blend-mode: screen; /* ★ここが軽量化のキモ！ブラウザにお任せ合成 */
+        mix-blend-mode: screen; /* ブラウザにお任せ合成 */
         pointer-events: none;
         opacity: 0;
         transition: opacity 0.5s linear;
@@ -195,8 +194,8 @@
 
     <div id="view-container">
       <video id="camera-feed" autoplay muted playsinline></video>
-      <video id="snow-1" class="snow-layer" muted playsinline webkit-playsinline></video>
-      <video id="snow-2" class="snow-layer" muted playsinline webkit-playsinline></video>
+      <video id="snow-1" class="snow-layer" src="snow.mp4" muted playsinline webkit-playsinline></video>
+      <video id="snow-2" class="snow-layer" src="snow.mp4" muted playsinline webkit-playsinline></video>
     </div>
 
     <canvas id="work-canvas"></canvas>
@@ -216,10 +215,6 @@
     <div id="flash"></div>
 
     <script>
-      const SNOW_VIDEO_URL = 'snow.mp4';
-      // 録画時のみ使う設定
-      const TARGET_FPS = 30; 
-      
       const cameraVideo = document.getElementById('camera-feed');
       const snowV1 = document.getElementById('snow-1');
       const snowV2 = document.getElementById('snow-2');
@@ -248,7 +243,6 @@
       const errorText = document.getElementById('error-text');
       
       let currentPreviewUrl = null;
-      let videoBlobUrl = null;
 
       const radius = progressCircle.r.baseVal.value;
       const circumference = radius * 2 * Math.PI;
@@ -267,11 +261,7 @@
       const LONG_PRESS_DURATION = 500;
 
       let currentFacingMode = 'environment';
-      
-      // 雪動画の制御ループID
       let snowLoopId;
-      // 録画用レンダリングループID
-      let recordLoopId;
 
       function showError(msg) {
         errorOverlay.style.display = 'flex';
@@ -279,43 +269,30 @@
         console.error(msg);
       }
 
-      async function loadAssets() {
-        try {
-          const response = await fetch(SNOW_VIDEO_URL);
-          if (!response.ok) throw new Error(`動画が見つかりません: ${response.status}`);
-          
-          const blob = await response.blob();
-          videoBlobUrl = URL.createObjectURL(blob);
-          
-          snowV1.src = videoBlobUrl;
-          snowV2.src = videoBlobUrl;
-          
-          await Promise.all([
-            new Promise(r => snowV1.onloadeddata = r),
-            new Promise(r => snowV2.onloadeddata = r)
-          ]);
-
-          snowV1.loop = false;
-          snowV2.loop = false;
-          
-          // 初期表示: snow1を表示
-          snowV1.style.opacity = 1;
-          snowV2.style.opacity = 0;
-          
-          startBtn.textContent = "START";
-          startBtn.disabled = false;
-          startBtn.classList.add('ready');
-
-        } catch (err) {
-          showError("動画ロードエラー: " + err.message);
-        }
+      // ★スタートボタンを有効にする関数
+      function enableStart() {
+        if(startBtn.disabled === false) return; // 既に有効なら無視
+        startBtn.textContent = "START";
+        startBtn.disabled = false;
+        startBtn.classList.add('ready');
+        
+        // 動画設定
+        snowV1.loop = false;
+        snowV2.loop = false;
+        snowV1.style.opacity = 1;
+        snowV2.style.opacity = 0;
       }
 
       async function initApp() {
-        loadAssets();
+        // 1. 強制的にスタート可能にするタイマー（3秒後に発動）
+        // これで「永遠にローディング」は回避できる
+        setTimeout(enableStart, 3000);
+
+        // 2. 動画が読み込めたら早めに有効化する
+        snowV1.addEventListener('canplay', enableStart, { once: true });
+        
         try {
           await initCamera(currentFacingMode);
-          // ループ開始（雪の切り替えのみ監視、描画はしない）
           monitorSnowVideo();
         } catch (err) {
           showError("カメラエラー:\n" + err.message);
@@ -331,7 +308,9 @@
         shutterContainer.style.display = 'block';
         flipBtn.style.display = 'flex';
         reloadBtn.style.display = 'flex';
-        if(currentSnowVideo.paused) currentSnowVideo.play().catch(()=>{});
+        
+        // スタート時に再生開始（ブラウザの自動再生制限対策）
+        if(currentSnowVideo.paused) currentSnowVideo.play().catch(e => console.log("Play blocked:", e));
       });
 
       async function initCamera(facingMode) {
@@ -364,7 +343,6 @@
         finally { flipBtn.style.pointerEvents = 'auto'; flipBtn.style.opacity = 1; }
       });
 
-      // ★軽量化のポイント: CSSで表示してるので、ここでは動画の再生切替だけ管理する
       function monitorSnowVideo() {
         snowLoopId = requestAnimationFrame(monitorSnowVideo);
 
@@ -375,23 +353,12 @@
           const timeLeft = duration - currentTime;
           
           if (timeLeft <= FADE_DURATION) {
-            // 次の動画を再生
-            if (nextSnowVideo.paused) {
-                nextSnowVideo.play().catch(()=>{});
-            }
-            
-            // CSSで透明度を操作してクロスフェード
-            // timeLeft: 1.0 -> 0.0
-            // alphaCurrent: 1.0 -> 0.0
+            if (nextSnowVideo.paused) nextSnowVideo.play().catch(()=>{});
             const alphaCurrent = Math.max(0, timeLeft / FADE_DURATION);
             const alphaNext = 1.0 - alphaCurrent;
-
-            // DOMのopacityを直接操作
             currentSnowVideo.style.opacity = alphaCurrent;
             nextSnowVideo.style.opacity = alphaNext;
-
           } else {
-            // 通常再生中
             currentSnowVideo.style.opacity = 1;
             nextSnowVideo.style.opacity = 0;
             if (!nextSnowVideo.paused) {
@@ -400,30 +367,24 @@
             }
           }
 
-          // 動画の入れ替え
           if (currentSnowVideo.ended || timeLeft <= 0) {
-            // 強制的に切り替え完了状態へ
             currentSnowVideo.style.opacity = 0;
             nextSnowVideo.style.opacity = 1;
-            
             const temp = currentSnowVideo;
             currentSnowVideo = nextSnowVideo;
             nextSnowVideo = temp;
-            
             nextSnowVideo.pause();
             nextSnowVideo.currentTime = 0;
           }
         } else {
-            // 再生が止まってたら動かす
+            // 動画ロード失敗時など、止まっていたら再生試行
             if(currentSnowVideo.paused && startBtn.disabled === false && startScreen.style.display === 'none') {
                 currentSnowVideo.play().catch(()=>{});
             }
         }
       }
 
-      // 撮影/録画時のみ呼び出される描画関数
       function drawToCanvasOnce() {
-        // キャンバスサイズを画面に合わせる
         const vw = window.innerWidth;
         const vh = window.innerHeight;
         if(canvas.width !== vw || canvas.height !== vh) {
@@ -431,12 +392,11 @@
            canvas.height = vh;
         }
 
-        // 1. 黒背景
         ctx.globalCompositeOperation = 'source-over';
         ctx.fillStyle = '#000000';
         ctx.fillRect(0, 0, vw, vh);
 
-        // 2. カメラ映像（object-fit: coverの計算）
+        // カメラ
         const camW = cameraVideo.videoWidth;
         const camH = cameraVideo.videoHeight;
         if(camW && camH) {
@@ -453,10 +413,8 @@
             ctx.drawImage(cameraVideo, csx, csy, csw, csh, 0, 0, vw, vh);
         }
 
-        // 3. 雪（現在見えているものを描画）
+        // 雪
         ctx.globalCompositeOperation = 'screen';
-        
-        // 動画のアスペクト比計算
         function drawVideoCover(vid, alpha) {
             if(alpha <= 0.01) return;
             const vW = vid.videoWidth;
@@ -477,16 +435,14 @@
             ctx.globalAlpha = 1.0;
         }
 
-        // CSSのopacityを取得して反映
         const op1 = parseFloat(window.getComputedStyle(snowV1).opacity);
         const op2 = parseFloat(window.getComputedStyle(snowV2).opacity);
-
         drawVideoCover(snowV1, op1);
         drawVideoCover(snowV2, op2);
       }
 
       function showPreview(type, url, filename) {
-        if (currentPreviewUrl && currentPreviewUrl !== videoBlobUrl) URL.revokeObjectURL(currentPreviewUrl);
+        if (currentPreviewUrl) URL.revokeObjectURL(currentPreviewUrl);
         currentPreviewUrl = url;
         previewModal.style.display = 'flex';
         shutterContainer.style.display = 'none';
@@ -539,16 +495,12 @@
         const flash = document.getElementById('flash');
         flash.style.opacity = 1;
         setTimeout(() => flash.style.opacity = 0, 200);
-        
-        // ★撮影時のみCanvasに描画して保存
         drawToCanvasOnce();
-        
         const dataURL = canvas.toDataURL('image/png');
         showPreview('photo', dataURL);
         setTimeout(() => { shutterLock = false; }, 1000);
       }
 
-      // 録画ループ
       function recordLoop() {
         if(!isRecording) return;
         drawToCanvasOnce();
@@ -560,10 +512,7 @@
         isLongPress = true;
         shutterContainer.classList.add('recording');
         recordingStartTime = Date.now();
-        
-        // ★録画開始直前にCanvasループを始動
         recordLoop();
-
         const stream = canvas.captureStream(30);
         const mimeTypes = ['video/mp4;codecs=avc1', 'video/mp4', 'video/webm;codecs=h264', 'video/webm'];
         const selectedMimeType = mimeTypes.find(type => MediaRecorder.isTypeSupported(type)) || '';
