@@ -1,7 +1,7 @@
 <html>
   <head>
     <meta charset="utf-8">
-    <title> snow AR </title>
+    <title>Snow AR Camera (HowTo Transparent)</title>
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no, maximum-scale=1.0, viewport-fit=cover">
 
     <style>
@@ -47,36 +47,46 @@
       #reload-btn { right: 20px; }
       #flip-btn { left: 20px; }
 
-      /* ★ スタート画面（半透明に変更） */
+      /* ★ スタート画面（半透明オーバーレイ） */
       #start-screen {
         position: fixed; top: 0; left: 0; width: 100%; height: 100%;
-        /* ここを変更！後ろが透けるようにする */
+        
+        /* ここで透け具合を調整 (0.6 = 60%の黒) */
         background-color: rgba(0, 0, 0, 0.6);
         
         z-index: 3000;
         display: flex; 
         flex-direction: column;
-        justify-content: space-between;
+        justify-content: center; /* 垂直方向中央 */
         align-items: center;
         padding: 40px 20px;
         box-sizing: border-box;
-        
-        /* ふわっと消えるアニメーション用 */
         transition: opacity 0.5s ease;
       }
 
-      /* HowTo画像 */
-      #howto-img {
-        flex-grow: 1;
+      /* HowTo画像エリア */
+      #howto-container {
+        flex: 1; /* 余白を埋めて、ボタンを下に押しやる */
+        display: flex;
+        justify-content: center;
+        align-items: center;
         width: 100%;
-        max-width: 400px;
+        overflow: hidden;
+      }
+
+      #howto-img {
+        max-width: 100%;
+        max-height: 80%; /* 画面の高さの8割くらいまでに制限 */
         object-fit: contain;
-        margin-bottom: 20px;
-        /* 画像を見やすくするために少しドロップシャドウ */
+        
+        /* 背景を透明に */
+        background-color: transparent;
+        
+        /* もし白文字のPNGなら、影をつけると見やすい */
         filter: drop-shadow(0 0 10px rgba(0,0,0,0.5));
       }
       
-      /* STARTボタン */
+      /* STARTボタン（下部固定） */
       #start-btn {
         width: 80%; max-width: 300px;
         padding: 18px 0; 
@@ -91,7 +101,8 @@
         letter-spacing: 2px;
         box-shadow: 0 4px 15px rgba(255,255,255,0.2);
         transition: transform 0.1s;
-        margin-bottom: 40px; 
+        margin-top: 20px;
+        margin-bottom: 40px; /* 下に少し余白 */
       }
       #start-btn:active { transform: scale(0.95); }
 
@@ -182,7 +193,10 @@
     </button>
 
     <div id="start-screen">
-      <img id="howto-img" src="howto.png" alt="How to use">
+      <div id="howto-container">
+        <img id="howto-img" src="howto.png" alt="How to use">
+      </div>
+      
       <button id="start-btn">START</button>
     </div>
 
@@ -279,22 +293,20 @@
       }
 
       // ==========================================
-      // アプリ即時起動 (裏で動かす)
+      // アプリ即時起動（裏で動かす）
       // ==========================================
       async function initApp() {
         try {
           snowV1.loop = false;
           snowV2.loop = false;
           
-          // 動画再生
           await snowV1.play().catch(e => {
-            console.warn("自動再生ブロック: タップ待ち", e);
+            console.warn("自動再生ブロック", e);
           });
 
-          // カメラ起動
           await initCamera(currentFacingMode);
           
-          // 描画開始（スタート画面の後ろで動く）
+          // 描画開始（Start画面の後ろで透けて見える）
           drawCompositeFrame(); 
 
         } catch (err) {
@@ -302,26 +314,24 @@
         }
       }
 
-      // ページ読み込みで即実行
       window.onload = initApp;
 
 
       // ==========================================
-      // STARTボタン処理 (UI表示切り替えのみ)
+      // STARTボタン処理
       // ==========================================
       startBtn.addEventListener('click', () => {
-        // スタート画面をフェードアウトして消す
+        // スタート画面をフェードアウト
         startScreen.style.opacity = '0';
         setTimeout(() => {
           startScreen.style.display = 'none';
         }, 500);
 
-        // UIを表示
+        // UI表示
         shutterContainer.style.display = 'block';
         flipBtn.style.display = 'flex';
         reloadBtn.style.display = 'flex';
         
-        // もし動画が止まってたら再生（ブロック対策の保険）
         if(currentSnowVideo.paused) currentSnowVideo.play().catch(()=>{});
       });
 
@@ -515,7 +525,6 @@
 
       document.addEventListener("visibilitychange", () => {
         if (document.visibilityState === "visible") {
-          // スタート画面もプレビューも閉じてる時のみ自動再開
           if (previewModal.style.display === 'none' && startScreen.style.display === 'none') {
              if (currentSnowVideo.paused) currentSnowVideo.play().catch(()=>{});
              if (cameraVideo.paused) cameraVideo.play().catch(()=>{});
