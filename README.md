@@ -1,7 +1,7 @@
 <html>
   <head>
     <meta charset="utf-8">
-    <title>Snow AR Camera (Buffer Fix)</title>
+    <title>Snow AR Camera (Final Ultimate)</title>
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no, maximum-scale=1.0, viewport-fit=cover">
 
     <style>
@@ -34,6 +34,24 @@
       }
 
       /* --- UIパーツ --- */
+      
+      /* リロードボタン（新機能） */
+      #reload-btn {
+        position: fixed; top: 20px; right: 20px;
+        z-index: 500;
+        width: 44px; height: 44px;
+        background: rgba(255, 255, 255, 0.3);
+        border: 1px solid rgba(255, 255, 255, 0.5);
+        border-radius: 50%;
+        color: white;
+        font-size: 20px;
+        cursor: pointer;
+        display: flex; justify-content: center; align-items: center;
+        backdrop-filter: blur(4px);
+        -webkit-tap-highlight-color: transparent; 
+      }
+      #reload-btn:active { background: rgba(255, 255, 255, 0.6); }
+
       #start-screen {
         position: fixed; top: 0; left: 0; width: 100%; height: 100%;
         background-color: rgba(0,0,0,0.9);
@@ -97,13 +115,17 @@
 
   <body>
 
+    <button id="reload-btn" onclick="location.reload()">↻</button>
+
     <div id="start-screen">
       <button id="start-btn">カメラを起動する</button>
       <div id="status-msg"></div>
     </div>
 
     <video id="camera-feed" class="hidden-source" autoplay muted playsinline></video>
-    <video id="snow-layer" class="hidden-source" src="snow.mp4" loop muted playsinline webkit-playsinline></video>
+    
+    <video id="snow-1" class="hidden-source" src="snow.mp4" muted playsinline webkit-playsinline></video>
+    <video id="snow-2" class="hidden-source" src="snow.mp4" muted playsinline webkit-playsinline></video>
 
     <canvas id="work-canvas"></canvas>
 
@@ -118,11 +140,13 @@
 
     <script>
       const cameraVideo = document.getElementById('camera-feed');
-      const snowVideo = document.getElementById('snow-layer');
+      // 動画を2つ取得
+      const snowV1 = document.getElementById('snow-1');
+      const snowV2 = document.getElementById('snow-2');
+      let activeSnowVideo = snowV1; // 現在描画に使っている動画
+
       const canvas = document.getElementById('work-canvas');
       const ctx = canvas.getContext('2d');
-      
-      // ★ここが新兵器！裏作業用のバッファキャンバスを作る
       const bufferCanvas = document.createElement('canvas');
       const bufferCtx = bufferCanvas.getContext('2d');
 
@@ -142,13 +166,51 @@
       let isRecording = false;
       let recordingStartTime;
       let selectedMimeType = '';
+      
+      // 誤操作・連写防止用フラグ
       let pressTimer;
       let isLongPress = false;
+      let isPressing = false; // マウス/タッチが押されているか
+      let shutterLock = false; // 連写防止ロック
       const LONG_PRESS_DURATION = 500;
 
       function log(msg) {
         statusMsg.innerHTML = msg;
         console.log(msg);
+      }
+
+      // ==========================================
+      // 0. シームレスループ管理（二刀流ロジック）
+      // ==========================================
+      function initSeamlessLoop() {
+        // メイン動画の準備
+        snowV1.loop = false; // 手動で切り替えるのでloop属性は切る
+        snowV2.loop = false;
+
+        // 動画1の監視
+        snowV1.addEventListener('timeupdate', () => {
+          checkAndSwitch(snowV1, snowV2);
+        });
+        // 動画2の監視
+        snowV2.addEventListener('timeupdate', () => {
+          checkAndSwitch(snowV2, snowV1);
+        });
+      }
+
+      function checkAndSwitch(current, next) {
+        // 残り時間が0.3秒を切ったら次の動画を再生開始
+        if (current.duration - current.currentTime < 0.3) {
+          if (next.paused) {
+            next.currentTime = 0;
+            next.play().catch(()=>{});
+          }
+        }
+        // 現在の動画が終わったら、描画対象を次に切り替え
+        if (current.ended) {
+          activeSnowVideo = next; // 描画対象切り替え
+          current.pause();
+          current.currentTime = 0;
+        }
       }
 
       // ==========================================
@@ -160,9 +222,11 @@
         log("初期化中...");
 
         try {
-          // 動画再生トライ
-          await snowVideo.play();
-          
+          // 動画ループシステムの準備
+          initSeamlessLoop();
+          await snowV1.play(); // 最初はV1から
+          activeSnowVideo = snowV1;
+
           // カメラ取得
           let stream = null;
           try {
@@ -195,7 +259,7 @@
       });
 
       // ==========================================
-      // 2. 合成ループ（バッファ作戦）
+      // 2. 合成ループ
       // ==========================================
       function drawCompositeFrame() {
         const cw = cameraVideo.videoWidth;
@@ -206,25 +270,20 @@
            return;
         }
 
-        // キャンバスサイズ同期
         if (canvas.width !== cw || canvas.height !== ch) {
           canvas.width = cw;
           canvas.height = ch;
-          // 裏キャンバスも同じサイズにする
           bufferCanvas.width = cw;
           bufferCanvas.height = ch;
         }
 
-        // ------------------------------------------------
-        // 手順1: 裏キャンバスに雪の動画を描く（ここでクロップもやる）
-        // ------------------------------------------------
-        const vw = snowVideo.videoWidth;
-        const vh = snowVideo.videoHeight;
+        // --- 手順1: 裏キャンバスに雪動画を描く ---
+        // activeSnowVideo（現在再生中のやつ）を使う
+        const videoToDraw = activeSnowVideo;
+        const vw = videoToDraw.videoWidth;
+        const vh = videoToDraw.videoHeight;
         
-        if (vw > 0 && vh > 0) {
-          if (snowVideo.paused) snowVideo.play().catch(()=>{});
-
-          // アスペクト比計算
+        if (vw > 0 && vh > 0 && !videoToDraw.paused) {
           const videoAspect = vw / vh;
           const canvasAspect = cw / ch;
           let sx, sy, sw, sh;
@@ -241,29 +300,18 @@
             sy = 0;
           }
 
-          // 裏キャンバスは「普通の描画」でOK
           bufferCtx.globalCompositeOperation = 'source-over';
-          // ★ここで背景を真っ黒に塗りつぶしてから描く（透明度バグ防止）
           bufferCtx.fillStyle = '#000000';
           bufferCtx.fillRect(0, 0, cw, ch);
-          bufferCtx.drawImage(snowVideo, sx, sy, sw, sh, 0, 0, cw, ch);
+          bufferCtx.drawImage(videoToDraw, sx, sy, sw, sh, 0, 0, cw, ch);
         }
 
-        // ------------------------------------------------
-        // 手順2: メインキャンバスに合成
-        // ------------------------------------------------
-        
-        // 2-1. カメラを描く（普通に）
+        // --- 手順2: メイン合成 ---
         ctx.globalCompositeOperation = 'source-over';
-        // フィルターは削除（スマホ対策）
-        ctx.filter = 'none'; 
         ctx.drawImage(cameraVideo, 0, 0, cw, ch);
 
-        // 2-2. 裏で作った雪画像を「スクリーン合成」で重ねる
-        // Videoタグを直接合成するより、Canvas同士の方がスマホは安定する
         ctx.globalCompositeOperation = 'screen';
         ctx.drawImage(bufferCanvas, 0, 0);
-
 
         requestAnimationFrame(drawCompositeFrame);
       }
@@ -272,12 +320,18 @@
       // 3. 撮影・録画機能
       // ==========================================
       function takePhoto() {
+        if (shutterLock) return; // ロック中なら何もしない
+        shutterLock = true; // ロック開始
+
         const flash = document.getElementById('flash');
         flash.style.opacity = 1;
         setTimeout(() => flash.style.opacity = 0, 200);
 
         const dataURL = canvas.toDataURL('image/png');
         downloadFile(dataURL, `snow_photo_${Date.now()}.png`);
+
+        // 1秒後にロック解除（連打防止）
+        setTimeout(() => { shutterLock = false; }, 1000);
       }
 
       function startRecording() {
@@ -338,21 +392,42 @@
         else stopRecording();
       }
 
+      // ==========================================
+      // 4. イベント管理（連写防止ロジック強化）
+      // ==========================================
       const startPress = (e) => {
         if(e.cancelable) e.preventDefault();
+        
+        // 既に押されてたら無視
+        if (isPressing) return;
+        isPressing = true;
+        
         isLongPress = false;
         pressTimer = setTimeout(() => startRecording(), LONG_PRESS_DURATION);
       };
 
       const endPress = (e) => {
         if(e.cancelable) e.preventDefault();
+        
+        // 押してないのに離したイベントが来た場合（マウスが外に出た後など）は無視
+        if (!isPressing) return;
+        isPressing = false;
+
         clearTimeout(pressTimer);
-        if (isRecording) stopRecording();
-        else takePhoto();
+
+        if (isRecording) {
+          stopRecording();
+        } else {
+          // 長押し判定じゃなかった場合のみ撮影
+          if (!isLongPress) {
+            takePhoto();
+          }
+        }
       };
 
       shutterContainer.addEventListener('mousedown', startPress);
       shutterContainer.addEventListener('touchstart', startPress, {passive: false});
+      
       shutterContainer.addEventListener('mouseup', endPress);
       shutterContainer.addEventListener('mouseleave', endPress);
       shutterContainer.addEventListener('touchend', endPress, {passive: false});
