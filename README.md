@@ -1,172 +1,81 @@
 <html>
   <head>
     <meta charset="utf-8">
-    <title>Snow AR Camera (Flip & Icon)</title>
+    <title>Snow AR Camera (Wide Angle Fix)</title>
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no, maximum-scale=1.0, viewport-fit=cover">
 
     <style>
       /* --- 基本設定 --- */
       html, body {
         margin: 0; padding: 0; width: 100%; height: 100%;
-        overflow: hidden; background-color: #000;
+        overflow: hidden; background-color: #000; /* 黒帯の色 */
         font-family: sans-serif;
         overscroll-behavior: none;
+        /* UIを中央寄せにするためのFlex設定 */
+        display: flex; justify-content: center; align-items: center;
       }
 
       /* 素材（非表示） */
       .hidden-source {
-        position: absolute; top: 0; left: 0;
-        width: 10px; height: 10px;
-        opacity: 0.01;
-        pointer-events: none;
-        z-index: -99;
+        position: absolute; top: 0; left: 0; width: 10px; height: 10px;
+        opacity: 0.01; pointer-events: none; z-index: -99;
       }
 
       /* メイン表示＆録画用キャンバス */
       #work-canvas {
-        position: fixed;
-        top: 50%; left: 50%;
-        transform: translate(-50%, -50%);
-        min-width: 100%; min-height: 100%;
-        width: auto; height: auto;
-        z-index: 1;
+        /* 固定配置をやめて、Flexで中央寄せにする */
         display: block;
+        /* 画面からはみ出さないように制限 */
+        max-width: 100%;
+        max-height: 100%;
+        /* アスペクト比を維持 */
+        object-fit: contain; 
+        z-index: 1;
       }
 
-      /* --- UIパーツ --- */
-      
-      /* 共通ボタン（リロード・カメラ切替）のスタイル */
+      /* --- UIパーツ（配置調整） --- */
+      /* ボタン類は画面の端に固定し直す */
+      .icon-btn { position: fixed; top: 20px; z-index: 500; }
+      #reload-btn { right: 20px; }
+      #flip-btn { left: 20px; }
+
+      #shutter-container {
+        position: fixed; bottom: 30px; /* 位置は固定のまま */
+        z-index: 100;
+      }
+
+      /* その他UIスタイルは維持... */
       .icon-btn {
-        position: fixed; top: 20px;
-        z-index: 500;
-        width: 44px; height: 44px;
-        background: rgba(0, 0, 0, 0.3);
-        border: 1px solid rgba(255, 255, 255, 0.5);
-        border-radius: 50%;
-        color: white;
-        cursor: pointer;
-        display: flex; justify-content: center; align-items: center;
-        backdrop-filter: blur(4px);
-        -webkit-tap-highlight-color: transparent; 
-        transition: background 0.2s;
+        width: 44px; height: 44px; background: rgba(0, 0, 0, 0.3); border: 1px solid rgba(255, 255, 255, 0.5); border-radius: 50%; color: white; cursor: pointer; display: flex; justify-content: center; align-items: center; backdrop-filter: blur(4px); -webkit-tap-highlight-color: transparent; transition: background 0.2s;
       }
       .icon-btn:active { background: rgba(255, 255, 255, 0.3); }
       .icon-btn svg { width: 24px; height: 24px; fill: white; }
-
-      /* 右上：リロード */
-      #reload-btn { right: 20px; }
-      
-      /* 左上：カメラ切り替え（新機能） */
-      #flip-btn { left: 20px; display: none; /* 最初は隠す（カメラ起動後に表示） */ }
-
-      /* スタート画面 */
-      #start-screen {
-        position: fixed; top: 0; left: 0; width: 100%; height: 100%;
-        background-color: rgba(0,0,0,0.9);
-        z-index: 999;
-        display: flex; justify-content: center; align-items: center; flex-direction: column;
-        color: white;
-        padding: 20px;
-        box-sizing: border-box;
-      }
-      #start-btn {
-        padding: 15px 40px; font-size: 18px;
-        background: #ff3b30; color: white;
-        border: none; border-radius: 30px;
-        cursor: pointer; font-weight: bold;
-        margin-bottom: 20px;
-      }
-      #status-msg { 
-        color: #ffffff; font-size: 16px; text-align: center; line-height: 1.5;
-        white-space: pre-wrap;
-      }
-
-      /* --- プレビュー画面 --- */
-      #preview-modal {
-        position: fixed; top: 0; left: 0; width: 100%; height: 100%;
-        background-color: rgba(0,0,0,0.95);
-        z-index: 2000;
-        display: none;
-        flex-direction: column;
-        justify-content: center; align-items: center;
-        color: white;
-      }
-      #preview-img, #preview-video {
-        max-width: 90%; max-height: 70%;
-        border-radius: 8px; box-shadow: 0 0 20px rgba(0,0,0,0.5);
-        margin-bottom: 20px; object-fit: contain;
-      }
+      #start-screen { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background-color: rgba(0,0,0,0.9); z-index: 999; display: flex; justify-content: center; align-items: center; flex-direction: column; color: white; padding: 20px; box-sizing: border-box; }
+      #start-btn { padding: 15px 40px; font-size: 18px; background: #ff3b30; color: white; border: none; border-radius: 30px; cursor: pointer; font-weight: bold; margin-bottom: 20px; }
+      #status-msg { color: #ffffff; font-size: 16px; text-align: center; line-height: 1.5; white-space: pre-wrap; }
+      #preview-modal { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background-color: rgba(0,0,0,0.95); z-index: 2000; display: none; flex-direction: column; justify-content: center; align-items: center; color: white; }
+      #preview-img, #preview-video { max-width: 90%; max-height: 70%; border-radius: 8px; box-shadow: 0 0 20px rgba(0,0,0,0.5); margin-bottom: 20px; object-fit: contain; }
       .preview-text { font-size: 14px; margin-bottom: 20px; color: #ccc; }
       .preview-buttons { display: flex; gap: 20px; }
       .btn { padding: 12px 30px; border-radius: 25px; border: none; font-size: 16px; font-weight: bold; cursor: pointer; }
       .btn-save { background-color: #ff3b30; color: white; }
       .btn-close { background-color: #555; color: white; }
-
-
-      /* シャッターボタンエリア */
-      #shutter-container {
-        position: fixed; bottom: 30px; left: 50%;
-        transform: translateX(-50%);
-        width: 80px; height: 80px;
-        z-index: 100;
-        cursor: pointer;
-        -webkit-tap-highlight-color: transparent; 
-        user-select: none;
-        display: none;
-      }
-
-      /* 外側のゲージ */
-      .progress-ring {
-        position: absolute; top: 0; left: 0;
-        width: 80px; height: 80px;
-        transform: rotate(-90deg);
-      }
-      .progress-ring__circle {
-        transition: stroke-dashoffset 0.1s linear;
-        stroke: #ff3b30; stroke-width: 4; fill: transparent;
-      }
-
-      /* シャッターボタン本体 */
-      #shutter-btn {
-        position: absolute; top: 10px; left: 10px;
-        width: 60px; height: 60px;
-        background-color: white; border-radius: 50%;
-        transition: all 0.2s;
-        display: flex; justify-content: center; align-items: center;
-      }
-
-      /* カメラアイコン（SVG） */
-      #camera-icon {
-        width: 32px; height: 32px;
-        fill: #333;
-        transition: opacity 0.2s;
-      }
-
-      /* 録画中のスタイル */
-      #shutter-container.recording #shutter-btn {
-        width: 30px; height: 30px; top: 25px; left: 25px;
-        border-radius: 4px; background-color: #ff3b30;
-      }
-      /* 録画中はカメラアイコンを消す */
-      #shutter-container.recording #camera-icon {
-        opacity: 0;
-      }
-
-      #flash {
-        position: fixed; top: 0; left: 0; width: 100%; height: 100%;
-        background: white; opacity: 0; pointer-events: none; z-index: 200;
-        transition: opacity 0.2s;
-      }
+      #shutter-container { width: 80px; height: 80px; cursor: pointer; -webkit-tap-highlight-color: transparent; user-select: none; display: none; }
+      .progress-ring { position: absolute; top: 0; left: 0; width: 80px; height: 80px; transform: rotate(-90deg); }
+      .progress-ring__circle { transition: stroke-dashoffset 0.1s linear; stroke: #ff3b30; stroke-width: 4; fill: transparent; }
+      #shutter-btn { position: absolute; top: 10px; left: 10px; width: 60px; height: 60px; background-color: white; border-radius: 50%; transition: all 0.2s; display: flex; justify-content: center; align-items: center; }
+      #camera-icon { width: 32px; height: 32px; fill: #333; transition: opacity 0.2s; }
+      #shutter-container.recording #shutter-btn { width: 30px; height: 30px; top: 25px; left: 25px; border-radius: 4px; background-color: #ff3b30; }
+      #shutter-container.recording #camera-icon { opacity: 0; }
+      #flash { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: white; opacity: 0; pointer-events: none; z-index: 200; transition: opacity 0.2s; }
     </style>
   </head>
 
   <body>
-
     <button id="reload-btn" class="icon-btn" onclick="location.reload()">
       <svg viewBox="0 0 24 24"><path d="M17.65 6.35C16.2 4.9 14.21 4 12 4c-4.42 0-7.99 3.58-7.99 8s3.57 8 7.99 8c3.73 0 6.84-2.55 7.73-6h-2.08c-.82 2.33-3.04 4-5.65 4-3.31 0-6-2.69-6-6s2.69-6 6-6c1.66 0 3.14.69 4.22 1.78L13 11h7V4l-2.35 2.35z"/></svg>
     </button>
-
-    <button id="flip-btn" class="icon-btn">
+    <button id="flip-btn" class="icon-btn" style="display:none;">
       <svg viewBox="0 0 24 24"><path d="M20 4h-3.17L15 2H9L7.17 4H4c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V6c0-1.1-.9-2-2-2zm-5 11.5V13H9v2.5L5.5 12 9 8.5V11h6V8.5l3.5 3.5-3.5 3.5z"/></svg>
     </button>
 
@@ -197,7 +106,8 @@
       </svg>
       <div id="shutter-btn">
         <svg id="camera-icon" viewBox="0 0 24 24">
-          <path d="M12 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm0 2c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z" opacity="0"/> <path d="M9 2L7.17 4H4c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V6c0-1.1-.9-2-2-2h-3.17L15 2H9zm3 15c-2.76 0-5-2.24-5-5s2.24-5 5-5 5 2.24 5 5-2.24 5-5 5z"/>
+          <path d="M12 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm0 2c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z" opacity="0"/>
+          <path d="M9 2L7.17 4H4c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V6c0-1.1-.9-2-2-2h-3.17L15 2H9zm3 15c-2.76 0-5-2.24-5-5s2.24-5 5-5 5 2.24 5 5-2.24 5-5 5z"/>
         </svg>
       </div>
     </div>
@@ -225,7 +135,7 @@
       const startScreen = document.getElementById('start-screen');
       const startBtn = document.getElementById('start-btn');
       const statusMsg = document.getElementById('status-msg');
-      const flipBtn = document.getElementById('flip-btn'); // カメラ切り替えボタン
+      const flipBtn = document.getElementById('flip-btn');
 
       const previewModal = document.getElementById('preview-modal');
       const previewImg = document.getElementById('preview-img');
@@ -252,8 +162,7 @@
       let shutterLock = false; 
       const LONG_PRESS_DURATION = 500;
 
-      // カメラ設定管理用
-      let currentFacingMode = 'environment'; // 初期は外カメラ
+      let currentFacingMode = 'environment';
 
       function log(msg) {
         statusMsg.innerHTML = msg;
@@ -261,10 +170,9 @@
       }
 
       // ==========================================
-      // カメラ初期化・切り替えロジック
+      // カメラ初期化
       // ==========================================
       async function initCamera(facingMode) {
-        // 既存のストリームがあれば停止
         if (cameraVideo.srcObject) {
           cameraVideo.srcObject.getTracks().forEach(track => track.stop());
         }
@@ -272,20 +180,18 @@
         let stream = null;
         try {
           log(`カメラ起動中 (${facingMode === 'user' ? '自撮り' : '外向き'})...`);
-          
-          // 指定モードで取得トライ
+          // なるべく広角な高解像度を要求
           stream = await navigator.mediaDevices.getUserMedia({
             video: { 
               facingMode: facingMode, 
-              width: { ideal: 1280 }, 
-              height: { ideal: 720 } 
+              width: { ideal: 1920 }, // フルHDを狙う
+              height: { ideal: 1080 } 
             },
             audio: false 
           });
         } catch (err) {
           log("指定モード失敗...標準設定で再試行");
           try {
-             // 失敗時は指定なしでトライ（PCなどでfacingModeがない場合への保険）
              stream = await navigator.mediaDevices.getUserMedia({
               video: true,
               audio: false 
@@ -296,8 +202,6 @@
         }
 
         cameraVideo.srcObject = stream;
-        
-        // 映像が来るまで待機
         return new Promise((resolve) => {
           cameraVideo.onloadedmetadata = () => {
             resolve();
@@ -305,18 +209,13 @@
         });
       }
 
-      // 切り替えボタンの処理
       flipBtn.addEventListener('click', async () => {
-        // モード反転
         currentFacingMode = (currentFacingMode === 'environment') ? 'user' : 'environment';
-        
-        // ボタンを一時的に無効化（連打防止）
         flipBtn.style.pointerEvents = 'none';
         flipBtn.style.opacity = 0.5;
-
         try {
           await initCamera(currentFacingMode);
-          log(""); // ログクリア
+          log("");
         } catch (err) {
           log("カメラ切り替えエラー: " + err.message);
         } finally {
@@ -324,7 +223,6 @@
           flipBtn.style.opacity = 1;
         }
       });
-
 
       // ==========================================
       // アプリ起動
@@ -338,14 +236,11 @@
           snowV1.loop = false;
           snowV2.loop = false;
           await snowV1.play();
-          
-          // 初回カメラ起動
           await initCamera(currentFacingMode);
 
-          // UI切り替え
           startScreen.style.display = 'none';
           shutterContainer.style.display = 'block';
-          flipBtn.style.display = 'flex'; // 切り替えボタン表示
+          flipBtn.style.display = 'flex';
           
           drawCompositeFrame(); 
 
@@ -359,28 +254,29 @@
 
 
       // ==========================================
-      // 描画ループ (クロスフェード)
+      // 描画ループ (画角最大化＆クロスフェード)
       // ==========================================
       function drawCompositeFrame() {
-        const cw = cameraVideo.videoWidth;
-        const ch = cameraVideo.videoHeight;
+        const videoWidth = cameraVideo.videoWidth;
+        const videoHeight = cameraVideo.videoHeight;
 
-        if (cw === 0 || ch === 0) {
+        if (videoWidth === 0 || videoHeight === 0) {
            requestAnimationFrame(drawCompositeFrame);
            return;
         }
 
-        if (canvas.width !== cw || canvas.height !== ch) {
-          canvas.width = cw;
-          canvas.height = ch;
-          bufferCanvas.width = cw;
-          bufferCanvas.height = ch;
+        // ★変更点：Canvasサイズをカメラの解像度に合わせる
+        if (canvas.width !== videoWidth || canvas.height !== videoHeight) {
+          canvas.width = videoWidth;
+          canvas.height = videoHeight;
+          bufferCanvas.width = videoWidth;
+          bufferCanvas.height = videoHeight;
         }
 
         // バッファクリア
         bufferCtx.globalCompositeOperation = 'source-over';
         bufferCtx.fillStyle = '#000000';
-        bufferCtx.fillRect(0, 0, cw, ch);
+        bufferCtx.fillRect(0, 0, videoWidth, videoHeight);
 
         // クロスフェード計算
         const duration = currentSnowVideo.duration;
@@ -396,10 +292,11 @@
             }
             const alphaCurrent = Math.max(0, timeLeft / FADE_DURATION);
             const alphaNext = 1.0 - alphaCurrent;
-            drawSnowToBuffer(currentSnowVideo, cw, ch, alphaCurrent);
-            drawSnowToBuffer(nextSnowVideo, cw, ch, alphaNext);
+            // 雪動画はCanvasサイズ（＝カメラサイズ）に合わせて伸縮
+            drawSnowToBuffer(currentSnowVideo, videoWidth, videoHeight, alphaCurrent);
+            drawSnowToBuffer(nextSnowVideo, videoWidth, videoHeight, alphaNext);
           } else {
-            drawSnowToBuffer(currentSnowVideo, cw, ch, 1.0);
+            drawSnowToBuffer(currentSnowVideo, videoWidth, videoHeight, 1.0);
             if (!nextSnowVideo.paused) {
               nextSnowVideo.pause();
               nextSnowVideo.currentTime = 0;
@@ -415,45 +312,21 @@
           }
         }
 
-        // 合成：カメラ＋バッファ
-        // 自撮り（user）の時は左右反転させると鏡みたいで自然やけど、
-        // 録画した時に文字が反転するから、今回はあえてそのまま描画するで。
+        // 合成
         ctx.globalCompositeOperation = 'source-over';
-        
-        // もし自撮りの反転を入れたいならここで ctx.scale(-1, 1) とかやるけど
-        // AR合成の位置ズレ防止のため今回は標準のままいくわ
-        ctx.drawImage(cameraVideo, 0, 0, cw, ch);
-        
+        ctx.drawImage(cameraVideo, 0, 0, videoWidth, videoHeight);
         ctx.globalCompositeOperation = 'screen';
         ctx.drawImage(bufferCanvas, 0, 0);
 
         requestAnimationFrame(drawCompositeFrame);
       }
 
+      // 雪動画をアスペクト比無視でCanvas全体に引き伸ばす（カメラ映像に合わせるため）
       function drawSnowToBuffer(video, cw, ch, alpha) {
         if (alpha <= 0.01) return;
-        const vw = video.videoWidth;
-        const vh = video.videoHeight;
-        if (vw === 0 || vh === 0) return;
-
-        const videoAspect = vw / vh;
-        const canvasAspect = cw / ch;
-        let sx, sy, sw, sh;
-
-        if (canvasAspect > videoAspect) {
-          sw = vw;
-          sh = vw / canvasAspect;
-          sx = 0;
-          sy = (vh - sh) / 2;
-        } else {
-          sh = vh;
-          sw = vh * canvasAspect;
-          sx = (vw - sw) / 2;
-          sy = 0;
-        }
-
         bufferCtx.globalAlpha = alpha;
-        bufferCtx.drawImage(video, sx, sy, sw, sh, 0, 0, cw, ch);
+        // クロップせず、単純に引き伸ばして描画
+        bufferCtx.drawImage(video, 0, 0, cw, ch);
         bufferCtx.globalAlpha = 1.0;
       }
 
@@ -466,8 +339,11 @@
         currentPreviewUrl = url;
 
         previewModal.style.display = 'flex';
+        // UIを隠す
         shutterContainer.style.display = 'none';
-        flipBtn.style.display = 'none'; // プレビュー中は切り替えボタンも隠す
+        flipBtn.style.display = 'none';
+        document.getElementById('reload-btn').style.display = 'none';
+
 
         if (type === 'photo') {
           previewImg.style.display = 'block';
@@ -492,8 +368,10 @@
         previewVideo.src = "";
         previewImg.src = "";
         
+        // UIを戻す
         shutterContainer.style.display = 'block';
-        flipBtn.style.display = 'flex'; // ボタン復活
+        flipBtn.style.display = 'flex';
+        document.getElementById('reload-btn').style.display = 'flex';
       }
       
       btnClose.addEventListener('click', closePreview);
