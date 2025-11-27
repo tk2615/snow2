@@ -2,7 +2,7 @@
 <html>
   <head>
     <meta charset="utf-8">
-    <title>Snow AR Camera Final</title>
+    <title>Fixed Snow AR Camera</title>
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no, maximum-scale=1.0">
 
     <style>
@@ -21,8 +21,40 @@
       #camera-feed { z-index: 1; }
       #snow-layer { z-index: 2; mix-blend-mode: screen; pointer-events: none; }
 
-      /* --- UIパーツ（撮影画面） --- */
+      /* --- スタート画面（エラー対策の切り札） --- */
+      #start-screen {
+        position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+        background: #000;
+        z-index: 9999;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        color: white;
+      }
+      #start-btn {
+        padding: 20px 40px;
+        font-size: 24px;
+        font-weight: bold;
+        background: #ff3b30;
+        color: white;
+        border: none;
+        border-radius: 50px;
+        cursor: pointer;
+        box-shadow: 0 0 20px rgba(255, 59, 48, 0.5);
+      }
+      #debug-log {
+        margin-top: 20px;
+        font-size: 12px;
+        color: #aaa;
+        width: 80%;
+        text-align: center;
+        white-space: pre-wrap;
+      }
+
+      /* --- UIパーツ --- */
       #shutter-container {
+        display: none; /* 最初は隠す */
         position: fixed; bottom: 40px; left: 50%;
         transform: translateX(-50%);
         width: 80px; height: 80px;
@@ -60,16 +92,9 @@
         background-color: #ff3b30;
       }
 
-      /* フラッシュ演出 */
-      #flash {
-        position: fixed; top: 0; left: 0; width: 100%; height: 100%;
-        background: white; opacity: 0; pointer-events: none; z-index: 200;
-        transition: opacity 0.2s;
-      }
-      
-      /* --- プレビュー画面（撮影確認） --- */
+      /* プレビュー画面 */
       #preview-modal {
-        display: none; /* 最初は隠す */
+        display: none;
         position: fixed; top: 0; left: 0; width: 100%; height: 100%;
         background: rgba(0,0,0,0.95);
         z-index: 300;
@@ -77,69 +102,44 @@
         align-items: center;
         justify-content: center;
       }
-
-      /* プレビュー画像・動画のスタイル */
       #preview-img, #preview-video {
-        max-width: 90%;
-        max-height: 70%;
+        max-width: 90%; max-height: 70%;
         border-radius: 10px;
-        box-shadow: 0 0 20px rgba(255,255,255,0.1);
-        /* 長押し保存を有効にするためポインターイベントを許可 */
         pointer-events: auto; 
-        -webkit-user-select: none;
-        user-select: none;
-        /* iOSで長押しメニューが出やすいように */
+        -webkit-user-select: none; user-select: none;
         -webkit-touch-callout: default; 
       }
-
-      /* ボタン群 */
-      .preview-controls {
-        margin-top: 20px;
-        display: flex;
-        gap: 20px;
-      }
-
-      .btn {
-        padding: 12px 24px;
-        border-radius: 30px;
-        font-size: 16px;
-        font-weight: bold;
-        border: none;
-        cursor: pointer;
-      }
+      .preview-controls { margin-top: 20px; display: flex; gap: 20px; }
+      .btn { padding: 12px 24px; border-radius: 30px; font-size: 16px; font-weight: bold; border: none; cursor: pointer; }
       .btn-cancel { background: #333; color: white; }
       .btn-save { background: white; color: black; }
-      
-      .guide-text {
-        color: #aaa; font-size: 12px; margin-top: 10px;
-        text-align: center;
-      }
+      .guide-text { color: #aaa; font-size: 12px; margin-top: 10px; text-align: center; }
 
-      /* 処理用キャンバス */
+      #flash { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: white; opacity: 0; pointer-events: none; z-index: 200; transition: opacity 0.2s; }
       #work-canvas { display: none; }
     </script>
   </head>
 
   <body>
 
+    <div id="start-screen">
+      <button id="start-btn">カメラ起動</button>
+      <div id="debug-log">待機中...</div>
+    </div>
+
     <video id="camera-feed" class="responsive-video" autoplay muted playsinline></video>
     <video id="snow-layer" class="responsive-video" src="snow.mp4" loop muted playsinline webkit-playsinline></video>
 
     <div id="shutter-container">
-      <svg class="progress-ring">
-        <circle class="progress-ring__circle" stroke-dasharray="240 240" stroke-dashoffset="240" r="38" cx="40" cy="40"/>
-      </svg>
+      <svg class="progress-ring"><circle class="progress-ring__circle" stroke-dasharray="240 240" stroke-dashoffset="240" r="38" cx="40" cy="40"/></svg>
       <div id="shutter-btn"></div>
     </div>
-
     <div id="flash"></div>
 
     <div id="preview-modal">
       <img id="preview-img" style="display:none;">
       <video id="preview-video" style="display:none;" controls playsinline loop></video>
-      
-      <p class="guide-text">長押ししてカメラロールに保存できるで</p>
-
+      <p class="guide-text">長押しで保存 / または下のボタン</p>
       <div class="preview-controls">
         <button class="btn btn-cancel" id="btn-retake">撮り直す</button>
         <button class="btn btn-save" id="btn-download">保存する</button>
@@ -149,27 +149,40 @@
     <canvas id="work-canvas"></canvas>
 
     <script>
+      // ログ表示用関数
+      function log(msg) {
+        const logBox = document.getElementById('debug-log');
+        logBox.innerText += "\n" + msg;
+        console.log(msg);
+      }
+
+      // エラーハンドリング
+      window.onerror = function(msg, url, line) {
+        log("エラー発生: " + msg);
+        return false;
+      };
+
       const cameraVideo = document.getElementById('camera-feed');
       const snowVideo = document.getElementById('snow-layer');
       const canvas = document.getElementById('work-canvas');
       const ctx = canvas.getContext('2d');
-      
-      // UI要素
       const shutterContainer = document.getElementById('shutter-container');
       const progressCircle = document.querySelector('.progress-ring__circle');
+      const startScreen = document.getElementById('start-screen');
+      const startBtn = document.getElementById('start-btn');
+      
+      // UI要素
       const previewModal = document.getElementById('preview-modal');
       const previewImg = document.getElementById('preview-img');
       const previewVideo = document.getElementById('preview-video');
       const btnRetake = document.getElementById('btn-retake');
       const btnDownload = document.getElementById('btn-download');
 
-      // ゲージ計算
       const radius = progressCircle.r.baseVal.value;
       const circumference = radius * 2 * Math.PI;
       progressCircle.style.strokeDasharray = `${circumference} ${circumference}`;
       progressCircle.style.strokeDashoffset = circumference;
 
-      // 録画関連変数
       let mediaRecorder;
       let recordedChunks = [];
       let isRecording = false;
@@ -177,43 +190,63 @@
       let animationFrameId;
       let pressTimer;
       let isLongPress = false;
-      let currentBlob = null; // 保存用データ
-      let currentFileType = ''; // 'image' or 'video'
+      let currentBlob = null;
+      let currentFileType = '';
 
       // ==========================================
-      // 1. 起動処理
+      // 1. スタートボタンでの起動処理
       // ==========================================
-      async function initApp() {
+      startBtn.addEventListener('click', async () => {
+        log("起動開始...");
+        startBtn.disabled = true;
+        startBtn.innerText = "起動中...";
+
         try {
+          // カメラ起動
+          log("カメラ権限を要求中...");
           const stream = await navigator.mediaDevices.getUserMedia({
             video: { facingMode: 'environment', width: {ideal: 1280}, height: {ideal: 720} },
             audio: false 
           });
+          log("カメラ取得成功！");
           cameraVideo.srcObject = stream;
-          snowVideo.play().catch(() => {
-            document.body.addEventListener('touchstart', () => snowVideo.play(), {once:true});
-          });
+          
+          // カメラのロード待ち
+          await new Promise(r => cameraVideo.onloadedmetadata = r);
+          cameraVideo.play();
+
+          // 雪動画の再生
+          log("雪動画を再生...");
+          await snowVideo.play();
+          
+          // 準備完了
+          log("全システム正常。");
+          startScreen.style.display = 'none'; // スタート画面消去
+          shutterContainer.style.display = 'block'; // シャッター表示
+
         } catch (err) {
-          alert("カメラの許可が必要やで！");
+          log("【致命的エラー】: " + err.name + " - " + err.message);
+          startBtn.innerText = "再試行";
+          startBtn.disabled = false;
+          alert("起動に失敗しました。\nログを確認してください。\n" + err.message);
         }
-      }
+      });
 
       // ==========================================
       // 2. 描画ループ
       // ==========================================
       function drawCompositeFrame() {
-        if (canvas.width !== cameraVideo.videoWidth) {
+        if (canvas.width !== cameraVideo.videoWidth && cameraVideo.videoWidth > 0) {
           canvas.width = cameraVideo.videoWidth;
           canvas.height = cameraVideo.videoHeight;
         }
 
-        // カメラを描く
-        ctx.globalCompositeOperation = 'source-over';
-        ctx.drawImage(cameraVideo, 0, 0, canvas.width, canvas.height);
-
-        // 雪をスクリーン合成
-        ctx.globalCompositeOperation = 'screen';
-        ctx.drawImage(snowVideo, 0, 0, canvas.width, canvas.height);
+        if(canvas.width > 0) {
+            ctx.globalCompositeOperation = 'source-over';
+            ctx.drawImage(cameraVideo, 0, 0, canvas.width, canvas.height);
+            ctx.globalCompositeOperation = 'screen';
+            ctx.drawImage(snowVideo, 0, 0, canvas.width, canvas.height);
+        }
 
         if (isRecording) {
           animationFrameId = requestAnimationFrame(drawCompositeFrame);
@@ -221,53 +254,46 @@
       }
 
       // ==========================================
-      // 3. 静止画撮影
+      // 3. 撮影機能
       // ==========================================
       function takePhoto() {
-        drawCompositeFrame(); // 1フレーム描画
+        drawCompositeFrame(); 
         
-        // フラッシュ
         const flash = document.getElementById('flash');
         flash.style.opacity = 1;
         setTimeout(() => flash.style.opacity = 0, 200);
 
-        // 画像データ作成
         canvas.toBlob((blob) => {
+          if(!blob) { log("画像生成失敗"); return; }
           currentBlob = blob;
           currentFileType = 'image';
           showPreview();
         }, 'image/png');
       }
 
-      // ==========================================
-      // 4. 動画撮影（MP4対応努力版）
-      // ==========================================
       function startRecording() {
         isRecording = true;
         isLongPress = true;
         shutterContainer.classList.add('recording');
         recordingStartTime = Date.now();
         recordedChunks = [];
+        drawCompositeFrame(); 
 
-        drawCompositeFrame(); // 録画ループ開始
-
-        const stream = canvas.captureStream(30);
+        // Safari対応のストリーム取得
+        const stream = canvas.captureStream ? canvas.captureStream(30) : canvas.webkitCaptureStream(30);
         
-        // 【重要】MP4での録画を試みる
-        let options = { mimeType: 'video/mp4' }; // まずMP4を要求
-        
+        let options = { mimeType: 'video/mp4' };
         if (!MediaRecorder.isTypeSupported('video/mp4')) {
-          // ダメならWebM（Androidなど）
-          console.log("MP4非対応やからWebMでいくで");
-          options = { mimeType: 'video/webm;codecs=vp9' };
+          options = { mimeType: 'video/webm' };
           if(!MediaRecorder.isTypeSupported(options.mimeType)) {
-             options = { mimeType: 'video/webm' }; // 最終手段
+             options = undefined; // ブラウザにお任せ
           }
         }
 
         try {
           mediaRecorder = new MediaRecorder(stream, options);
         } catch (e) {
+          log("MediaRecorderエラー: " + e.message);
           mediaRecorder = new MediaRecorder(stream);
         }
 
@@ -276,10 +302,6 @@
         };
 
         mediaRecorder.onstop = () => {
-          // 録画停止後の処理
-          // ここで MIMEタイプに関わらずBlobを作る
-          // Androidでmp4として保存させるためにtypeを工夫する手もあるが
-          // 再生互換性のため、記録された通りの型でBlob化する
           const mimeType = mediaRecorder.mimeType || 'video/webm';
           currentBlob = new Blob(recordedChunks, { type: mimeType });
           currentFileType = 'video';
@@ -313,65 +335,51 @@
       }
 
       // ==========================================
-      // 5. プレビュー画面の表示・保存
+      // 4. プレビュー & 保存
       // ==========================================
       function showPreview() {
-        // UI切り替え
         shutterContainer.style.display = 'none';
         previewModal.style.display = 'flex';
         
         const url = URL.createObjectURL(currentBlob);
 
         if (currentFileType === 'image') {
-          // 画像表示
           previewImg.src = url;
           previewImg.style.display = 'block';
           previewVideo.style.display = 'none';
           previewVideo.src = "";
         } else {
-          // 動画表示
           previewVideo.src = url;
           previewVideo.style.display = 'block';
           previewImg.style.display = 'none';
-          previewVideo.play(); // プレビュー再生
+          previewVideo.play();
         }
       }
 
-      // 「撮り直す」ボタン
       btnRetake.addEventListener('click', () => {
         previewModal.style.display = 'none';
         shutterContainer.style.display = 'block';
         previewVideo.pause();
-        // メモリ開放
         URL.revokeObjectURL(previewImg.src);
         URL.revokeObjectURL(previewVideo.src);
       });
 
-      // 「保存する」ボタン（長押ししない人用）
       btnDownload.addEventListener('click', () => {
         if (!currentBlob) return;
-        
         const url = URL.createObjectURL(currentBlob);
         const a = document.createElement('a');
         a.style.display = 'none';
         a.href = url;
         
-        // ファイル名を決定
         const timestamp = new Date().getTime();
         if (currentFileType === 'image') {
           a.download = `snow_photo_${timestamp}.png`;
         } else {
-          // 動画の場合、iPhoneならmp4でOK。
-          // Androidでwebmで録画されてても、無理やり.mp4をつけると
-          // 最近のプレイヤーは賢いから再生できることが多い。
           a.download = `snow_video_${timestamp}.mp4`; 
         }
         
         document.body.appendChild(a);
         a.click();
-        
-        // スマホによってはa.click()だけでは動かん場合があるから
-        // その場合は「長押ししてな！」のガイドが効いてくる
         setTimeout(() => {
           document.body.removeChild(a);
           window.URL.revokeObjectURL(url);
@@ -379,17 +387,17 @@
       });
 
       // ==========================================
-      // 6. タップイベント管理
+      // 5. 操作イベント
       // ==========================================
       const startPress = (e) => {
-        if(e.target.closest('#preview-modal')) return; // プレビュー中は反応させない
+        if(e.target.closest('#preview-modal') || e.target.closest('#start-screen')) return;
         e.preventDefault();
         isLongPress = false;
         pressTimer = setTimeout(() => { startRecording(); }, 500);
       };
 
       const endPress = (e) => {
-        if(e.target.closest('#preview-modal')) return;
+        if(e.target.closest('#preview-modal') || e.target.closest('#start-screen')) return;
         e.preventDefault();
         clearTimeout(pressTimer);
         if (isRecording) stopRecording();
@@ -400,8 +408,6 @@
       shutterContainer.addEventListener('touchstart', startPress);
       shutterContainer.addEventListener('mouseup', endPress);
       shutterContainer.addEventListener('touchend', endPress);
-
-      window.onload = initApp;
 
     </script>
   </body>
