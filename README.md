@@ -1,36 +1,29 @@
 <html>
   <head>
     <meta charset="utf-8">
-    <title>Snow AR Camera (Clean Preview & Stable)</title>
+    <title>Snow AR Camera (Relay Optimized)</title>
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no, maximum-scale=1.0, viewport-fit=cover">
     <style>
       /* 最初の見出し（h1）を消す */
-      h1:first-of-type {
-        display: none !important;
-      }
+      h1:first-of-type { display: none !important; }
     </style>
     <style>
       /* --- 基本設定 --- */
       html, body {
         margin: 0; padding: 0; width: 100%; height: 100%;
         overflow: hidden; background-color: #000;
-        font-family: sans-serif;
-        overscroll-behavior: none;
+        font-family: sans-serif; overscroll-behavior: none;
       }
-
       .hidden-source {
         position: absolute; top: 0; left: 0; width: 10px; height: 10px;
         opacity: 0.01; pointer-events: none; z-index: -99;
       }
-
       #work-canvas {
         position: fixed; top: 50%; left: 50%;
         transform: translate(-50%, -50%);
         width: 100%; height: 100%;
-        object-fit: cover; 
-        z-index: 1; display: block;
+        object-fit: cover; z-index: 1; display: block;
       }
-
       /* --- UIパーツ --- */
       .icon-btn {
         position: fixed; top: 20px; z-index: 500;
@@ -40,38 +33,32 @@
         border-radius: 50%; color: white; cursor: pointer;
         display: flex; justify-content: center; align-items: center;
         backdrop-filter: blur(4px); -webkit-tap-highlight-color: transparent; 
-        transition: background 0.2s;
-        display: none;
+        transition: background 0.2s; display: none;
       }
       .icon-btn:active { background: rgba(255, 255, 255, 0.3); }
       .icon-btn svg { width: 24px; height: 24px; fill: white; }
-
       #reload-btn { right: 20px; }
       #flip-btn { left: 20px; }
 
       /* スタート画面 */
       #start-screen {
         position: fixed; top: 0; left: 0; width: 100%; height: 100%;
-        background-color: rgba(0, 0, 0, 0.6);
-        z-index: 3000;
+        background-color: rgba(0, 0, 0, 0.6); z-index: 3000;
         display: flex; flex-direction: column;
         justify-content: space-between; align-items: center;
         padding: 40px 20px; box-sizing: border-box;
         transition: opacity 0.5s ease;
       }
-
       #howto-container {
         flex: 1; width: 100%; display: flex;
         justify-content: center; align-items: center;
         overflow: hidden; margin-bottom: 20px;
       }
-
       #howto-img {
         width: 120%; height: 120%;
         object-fit: contain; background-color: transparent;
         filter: drop-shadow(0 0 10px rgba(0,0,0,0.5));
       }
-      
       #start-btn {
         width: 60%; max-width: 300px; padding: 18px 0; 
         font-size: 20px; font-family: sans-serif;
@@ -82,7 +69,7 @@
         transition: transform 0.1s; margin-bottom: 40px; 
       }
       #start-btn:active { transform: scale(0.95); }
-
+      
       #error-overlay {
         position: fixed; top: 0; left: 0; width: 100%; height: 100%;
         background-color: rgba(0,0,0,0.8); z-index: 4000;
@@ -104,49 +91,38 @@
         border-radius: 8px; box-shadow: 0 0 20px rgba(0,0,0,0.5);
         margin-bottom: 30px; object-fit: contain;
       }
-      /* プレビュー動画のクリック無効化（再生バーを出さないため） */
       #preview-video { pointer-events: none; }
-
       .preview-text { font-size: 14px; margin-bottom: 20px; color: #ccc; }
       .preview-buttons { display: flex; gap: 20px; }
       .btn { padding: 12px 30px; border-radius: 30px; border: none; font-size: 16px; font-weight: bold; cursor: pointer; }
       .btn-save { background-color: white; color: black; }
       .btn-close { background-color: #333; color: white; border: 1px solid #555; }
 
-      /* * シャッターボタン周り (1.3倍サイズ調整版)
-       * Base: 80px -> 104px
-       */
+      /* シャッターボタン (1.3倍仕様) */
       #shutter-container {
         position: fixed; bottom: 30px; left: 50%;
         transform: translateX(-50%);
-        width: 104px; height: 104px; /* 1.3倍 */
+        width: 104px; height: 104px;
         z-index: 100; cursor: pointer;
         -webkit-tap-highlight-color: transparent; user-select: none;
         display: none;
       }
       .progress-ring {
-        position: absolute; top: 0; left: 0; width: 104px; height: 104px; /* 1.3倍 */
+        position: absolute; top: 0; left: 0; width: 104px; height: 104px;
         transform: rotate(-90deg);
       }
       .progress-ring__circle {
         transition: stroke-dashoffset 0.1s linear; stroke: #ff3b30; stroke-width: 4; fill: transparent;
       }
       #shutter-btn {
-        position: absolute; 
-        top: 13px; left: 13px; /* 位置調整 */
-        width: 78px; height: 78px; /* 1.3倍 */
+        position: absolute; top: 13px; left: 13px;
+        width: 78px; height: 78px;
         background-color: white; border-radius: 50%;
         transition: all 0.2s; display: flex; justify-content: center; align-items: center;
       }
-      #camera-icon { 
-        width: 42px; height: 42px; /* 1.3倍 */
-        fill: #333; transition: opacity 0.2s; 
-      }
-      
-      /* 録画中の赤い四角 */
+      #camera-icon { width: 42px; height: 42px; fill: #333; transition: opacity 0.2s; }
       #shutter-container.recording #shutter-btn {
-        width: 40px; height: 40px; /* 1.3倍 */
-        top: 32px; left: 32px; /* 位置調整 */
+        width: 40px; height: 40px; top: 32px; left: 32px;
         border-radius: 4px; background-color: #ff3b30;
       }
       #shutter-container.recording #camera-icon { opacity: 0; }
@@ -157,9 +133,7 @@
       }
     </style>
   </head>
-
   <body>
-
     <button id="reload-btn" class="icon-btn" onclick="location.reload()">
       <svg viewBox="0 0 24 24"><path d="M17.65 6.35C16.2 4.9 14.21 4 12 4c-4.42 0-7.99 3.58-7.99 8s3.57 8 7.99 8c3.73 0 6.84-2.55 7.73-6h-2.08c-.82 2.33-3.04 4-5.65 4-3.31 0-6-2.69-6-6s2.69-6 6-6c1.66 0 3.14.69 4.22 1.78L13 11h7V4l-2.35 2.35z"/></svg>
     </button>
@@ -191,8 +165,8 @@
     </div>
 
     <video id="camera-feed" class="hidden-source" autoplay muted playsinline></video>
-    <video id="snow-1" class="hidden-source" src="snow.mp4" muted playsinline webkit-playsinline></video>
-    <video id="snow-2" class="hidden-source" src="snow.mp4" muted playsinline webkit-playsinline></video>
+    <video id="snow-1" class="hidden-source" muted playsinline webkit-playsinline></video>
+    <video id="snow-2" class="hidden-source" muted playsinline webkit-playsinline></video>
 
     <canvas id="work-canvas"></canvas>
 
@@ -207,22 +181,24 @@
         </svg>
       </div>
     </div>
-
     <div id="flash"></div>
 
     <script>
       const cameraVideo = document.getElementById('camera-feed');
       const snowV1 = document.getElementById('snow-1');
       const snowV2 = document.getElementById('snow-2');
+      
       let currentSnowVideo = snowV1;
       let nextSnowVideo = snowV2;
-      const FADE_DURATION = 1.0;
+      
+      const FADE_DURATION = 1.0; // クロスフェード時間（秒）
 
       const canvas = document.getElementById('work-canvas');
       const ctx = canvas.getContext('2d', { alpha: false, desynchronized: true });
       const bufferCanvas = document.createElement('canvas');
       const bufferCtx = bufferCanvas.getContext('2d', { alpha: false, desynchronized: true });
 
+      // UI要素
       const shutterContainer = document.getElementById('shutter-container');
       const progressCircle = document.querySelector('.progress-ring__circle');
       const startScreen = document.getElementById('start-screen');
@@ -236,23 +212,24 @@
       const previewMsgPhoto = document.getElementById('preview-msg-photo');
       const btnSaveVideo = document.getElementById('btn-save-video');
       const btnClose = document.getElementById('btn-close');
-
+      
       const errorOverlay = document.getElementById('error-overlay');
       const errorText = document.getElementById('error-text');
       
       let currentPreviewUrl = null;
-      
-      // 円周計算（HTML側で半径を変えたので、ここで再計算される）
+      let snowBlobUrl = null;
+
+      // 円周計算
       const radius = progressCircle.r.baseVal.value;
       const circumference = radius * 2 * Math.PI;
       progressCircle.style.strokeDasharray = `${circumference} ${circumference}`;
       progressCircle.style.strokeDashoffset = circumference;
 
+      // 録画関連
       let mediaRecorder;
       let recordedChunks = [];
       let isRecording = false;
       let recordingStartTime;
-      
       let pressTimer;
       let isLongPress = false;
       let isPressing = false;
@@ -260,7 +237,6 @@
       const LONG_PRESS_DURATION = 500;
 
       let currentFacingMode = 'environment';
-
       let cachedWidth = 0;
       let cachedHeight = 0;
       let needsResize = true;
@@ -274,18 +250,45 @@
         console.error(msg);
       }
 
-      async function initApp() {
+      // ■ Blob読み込み関数
+      async function loadSnowVideo() {
         try {
+          const response = await fetch('snow.mp4');
+          if (!response.ok) throw new Error('Failed to fetch video');
+          const blob = await response.blob();
+          snowBlobUrl = URL.createObjectURL(blob);
+          
+          // Blob URLを両方のビデオにセット
+          snowV1.src = snowBlobUrl;
+          snowV2.src = snowBlobUrl;
+          
           snowV1.loop = false;
           snowV2.loop = false;
+          
+          // プリロード
+          await snowV1.load();
+          await snowV2.load();
+        } catch (e) {
+          throw new Error("動画ファイルの読み込みに失敗しました: " + e.message);
+        }
+      }
+
+      async function initApp() {
+        try {
+          // 1. まず動画をBlobで読み込む
+          await loadSnowVideo();
+
+          // 2. 最初の動画を再生開始
           await snowV1.play().catch(e => console.warn(e));
+          
+          // 3. カメラ起動 (HD画質キープ)
           await initCamera(currentFacingMode);
           
           updateDimensions();
           drawCompositeFrame(0);
 
         } catch (err) {
-          showError("カメラエラー:\n" + err.message);
+          showError("エラーが発生しました:\n" + err.message);
         }
       }
 
@@ -307,7 +310,6 @@
         }
         let stream = null;
         try {
-          // ★軽量化: 720p (1280x720) を指定して安定化
           stream = await navigator.mediaDevices.getUserMedia({
             video: { 
               facingMode: facingMode,
@@ -356,7 +358,7 @@
       }
 
       // ==========================================
-      // 描画ループ (30fps)
+      // ■ 描画ループ (省エネ・リレー方式)
       // ==========================================
       function drawCompositeFrame(timestamp) {
         requestAnimationFrame(drawCompositeFrame);
@@ -373,6 +375,7 @@
         const vw = cachedWidth;
         const vh = cachedHeight;
         
+        // 背景クリア
         bufferCtx.globalCompositeOperation = 'source-over';
         bufferCtx.fillStyle = '#000000';
         bufferCtx.fillRect(0, 0, vw, vh);
@@ -383,35 +386,56 @@
         if (duration && duration > 0) {
           const timeLeft = duration - currentTime;
           
+          // ★リレーロジック★
+          // 残り時間がフェード時間以下になったら、次のランナー（動画）を走らせる
           if (timeLeft <= FADE_DURATION) {
-            // ★安定化: 動画が止まっていたら再生
-            if (nextSnowVideo.paused) nextSnowVideo.play().catch(()=>{});
             
+            // 次の動画がまだ止まってたら、ここから助走開始
+            if (nextSnowVideo.paused) {
+              nextSnowVideo.currentTime = 0;
+              nextSnowVideo.play().catch(()=>{});
+            }
+            
+            // フェード計算 (今の動画は徐々に透明に、次は不透明に)
             const alphaCurrent = Math.max(0, timeLeft / FADE_DURATION);
             const alphaNext = 1.0 - alphaCurrent;
+
+            // 両方描画
             drawSnowToBuffer(currentSnowVideo, vw, vh, alphaCurrent);
             drawSnowToBuffer(nextSnowVideo, vw, vh, alphaNext);
+
           } else {
+            // ★通常運転モード★
+            // 9割の時間はこっち。1本しか描画しないし、もう1本は確実に止めておく
             drawSnowToBuffer(currentSnowVideo, vw, vh, 1.0);
-            // 待機中の動画は停止
+            
             if (!nextSnowVideo.paused) {
               nextSnowVideo.pause();
               nextSnowVideo.currentTime = 0;
             }
           }
 
+          // 現在の動画が終わったら、役割交代
           if (currentSnowVideo.ended || timeLeft <= 0) {
+            // 即座に入れ替え
             const temp = currentSnowVideo;
             currentSnowVideo = nextSnowVideo;
             nextSnowVideo = temp;
+            
+            // 古い方（元current）は即休憩
             nextSnowVideo.pause();
             nextSnowVideo.currentTime = 0;
-          }
-        } else {
-            // 再生が開始されてない場合の保険
+            
+            // 新しい方（元next）が確実に再生中か確認
             if(currentSnowVideo.paused) currentSnowVideo.play().catch(()=>{});
+          }
+
+        } else {
+           // 万が一再生されてない場合の保険
+           if(currentSnowVideo.paused) currentSnowVideo.play().catch(()=>{});
         }
 
+        // 合成描画
         ctx.globalCompositeOperation = 'source-over';
         ctx.drawImage(cameraVideo, 0, 0, vw, vh);
         ctx.globalCompositeOperation = 'screen';
@@ -445,11 +469,9 @@
         bufferCtx.globalAlpha = 1.0;
       }
 
-      // ==========================================
-      // UI イベント
-      // ==========================================
+      // UIイベント等 (変更なし)
       function showPreview(type, url, filename) {
-        if (currentPreviewUrl) URL.revokeObjectURL(currentPreviewUrl);
+        if (currentPreviewUrl && currentPreviewUrl !== snowBlobUrl) URL.revokeObjectURL(currentPreviewUrl);
         currentPreviewUrl = url;
         previewModal.style.display = 'flex';
         shutterContainer.style.display = 'none';
@@ -467,12 +489,9 @@
           previewVideo.style.display = 'block';
           previewMsgPhoto.style.display = 'none';
           btnSaveVideo.style.display = 'block';
-          
           previewVideo.src = url;
-          // ★プレビュー再生 (ミュートで自動再生)
           previewVideo.muted = true; 
           previewVideo.play().catch(()=>{});
-          
           btnSaveVideo.onclick = () => downloadFile(url, filename);
         }
       }
@@ -482,7 +501,7 @@
         previewVideo.pause();
         previewVideo.src = "";
         previewImg.src = "";
-        // プレビュー終了時に雪動画を再開
+        // 再開
         if(currentSnowVideo.paused) currentSnowVideo.play().catch(()=>{});
         shutterContainer.style.display = 'block';
         flipBtn.style.display = 'flex';
@@ -562,7 +581,6 @@
         isLongPress = false;
         pressTimer = setTimeout(() => startRecording(), LONG_PRESS_DURATION);
       };
-
       const endPress = (e) => {
         if(e.cancelable) e.preventDefault();
         if (!isPressing) return;
