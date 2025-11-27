@@ -1,7 +1,7 @@
 <html>
   <head>
     <meta charset="utf-8">
-    <title>Snow AR Camera (Canvas Preview)</title>
+    <title>Snow AR Camera (Lighten Blend)</title>
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no, maximum-scale=1.0, viewport-fit=cover">
 
     <style>
@@ -13,36 +13,28 @@
         overscroll-behavior: none;
       }
 
-      /* * 動画素材は隠す（opacity:0）。
-       * display:noneにすると再生が止まるスマホがあるから、
-       * 透明にして裏で動かしておくのがコツや。
+      /* * 動画素材の隠し方テクニック 
+       * opacity: 0 にするとiOSが「見えてへんから描画せんでええやろ」とサボることがある。
+       * なので、opacity: 0.01（ほぼ透明）にして、画面外ではなく背面に置く。
        */
       .hidden-source {
         position: absolute; top: 0; left: 0;
-        width: 1px; height: 1px;
-        opacity: 0;
+        width: 10px; height: 10px; /* サイズ0だと止まることがある */
+        opacity: 0.01; /* 完全に消さずにちょっと残す */
         pointer-events: none;
-        z-index: -1;
+        z-index: -99; /* Canvasの後ろに隠す */
       }
 
-      /* * メイン表示用のキャンバス 
-       * CSSで「画面いっぱいに広げる（object-fit: cover相当）」を実現する
-       */
+      /* メイン表示＆録画用キャンバス */
       #work-canvas {
         position: fixed;
         top: 50%; left: 50%;
         transform: translate(-50%, -50%);
-        /* 短い辺に合わせてアスペクト比を維持しつつ埋める */
-        min-width: 100%;
-        min-height: 100%;
-        width: auto;
-        height: auto;
+        min-width: 100%; min-height: 100%;
+        width: auto; height: auto;
         z-index: 1;
-        display: block; /* 最初から表示 */
+        display: block;
       }
-      
-      /* 画面のアスペクト比によっては、これだけだと隙間ができる場合があるから
-         JS側でもサイズ調整はしてるけど、CSSで中央寄せ拡大が基本や */
 
       /* --- UIパーツ --- */
       #start-screen {
@@ -125,7 +117,7 @@
       const cameraVideo = document.getElementById('camera-feed');
       const snowVideo = document.getElementById('snow-layer');
       const canvas = document.getElementById('work-canvas');
-      const ctx = canvas.getContext('2d'); // ここで2Dコンテキスト取得
+      const ctx = canvas.getContext('2d');
       const shutterContainer = document.getElementById('shutter-container');
       const progressCircle = document.querySelector('.progress-ring__circle');
       const startScreen = document.getElementById('start-screen');
@@ -154,10 +146,8 @@
         startBtn.textContent = "起動中...";
 
         try {
-          // 動画再生
           await snowVideo.play();
-
-          // カメラ取得
+          
           const stream = await navigator.mediaDevices.getUserMedia({
             video: { 
               facingMode: 'environment', 
@@ -168,11 +158,10 @@
           });
           cameraVideo.srcObject = stream;
           
-          // カメラのメタデータ読み込み完了を待ってからループ開始
           cameraVideo.onloadedmetadata = () => {
              startScreen.style.display = 'none';
              shutterContainer.style.display = 'block';
-             drawCompositeFrame(); // ループ開始！
+             drawCompositeFrame(); 
           };
 
         } catch (err) {
@@ -184,10 +173,9 @@
       });
 
       // ==========================================
-      // 2. 合成ループ（常に回す）
+      // 2. 合成ループ（重要修正点！）
       // ==========================================
       function drawCompositeFrame() {
-        // カメラの準備ができてなければ待つ
         if (cameraVideo.readyState < 2) {
            requestAnimationFrame(drawCompositeFrame);
            return;
@@ -196,7 +184,6 @@
         const cw = cameraVideo.videoWidth;
         const ch = cameraVideo.videoHeight;
 
-        // キャンバスサイズ更新
         if (canvas.width !== cw || canvas.height !== ch) {
           canvas.width = cw;
           canvas.height = ch;
@@ -206,20 +193,19 @@
         ctx.globalCompositeOperation = 'source-over';
         ctx.drawImage(cameraVideo, 0, 0, cw, ch);
 
-        // 2. 雪の合成（スクリーン）
-        // CSSではなくCanvasAPIで行うため、確実に合成される
-        ctx.globalCompositeOperation = 'screen';
+        // 2. 雪の合成
+        // ★ここを「lighten（比較・明）」に変更！
+        // これで黒い背景（暗い部分）は透明になり、白い雪（明るい部分）だけが残る！
+        ctx.globalCompositeOperation = 'lighten';
 
         const vw = snowVideo.videoWidth;
         const vh = snowVideo.videoHeight;
 
         if (vw > 0 && vh > 0) {
-          // アスペクト比計算とクロップ
           const videoAspect = vw / vh;
           const canvasAspect = cw / ch;
           let sx, sy, sw, sh;
 
-          // object-fit: cover のロジック
           if (canvasAspect > videoAspect) {
             sw = vw;
             sh = vw / canvasAspect;
@@ -231,11 +217,13 @@
             sx = (vw - sw) / 2;
             sy = 0;
           }
-          // 雪を描画
+          
+          // スマホで動画の更新が止まっていないか確認（止まってたら強制再生）
+          if (snowVideo.paused) snowVideo.play().catch(()=>{});
+
           ctx.drawImage(snowVideo, sx, sy, sw, sh, 0, 0, cw, ch);
         }
 
-        // ループ継続（録画中じゃなくても回す）
         requestAnimationFrame(drawCompositeFrame);
       }
 
@@ -256,7 +244,6 @@
         isLongPress = true;
         shutterContainer.classList.add('recording');
         recordingStartTime = Date.now();
-        // ループは既に回ってるのでここでは何もしなくてOK
 
         const stream = canvas.captureStream(30);
         
@@ -295,7 +282,6 @@
       function stopRecording() {
         isRecording = false;
         shutterContainer.classList.remove('recording');
-        // ループは止めない
         if (mediaRecorder && mediaRecorder.state !== 'inactive') mediaRecorder.stop();
         progressCircle.style.strokeDashoffset = circumference;
       }
@@ -311,9 +297,6 @@
         else stopRecording();
       }
 
-      // ==========================================
-      // 4. イベント管理
-      // ==========================================
       const startPress = (e) => {
         if(e.cancelable) e.preventDefault();
         isLongPress = false;
