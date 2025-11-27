@@ -1,7 +1,7 @@
 <html>
   <head>
     <meta charset="utf-8">
-    <title>Snow AR Camera (Lighten Blend)</title>
+    <title>Snow AR Camera (Final Contrast Fix)</title>
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no, maximum-scale=1.0, viewport-fit=cover">
 
     <style>
@@ -13,16 +13,13 @@
         overscroll-behavior: none;
       }
 
-      /* * 動画素材の隠し方テクニック 
-       * opacity: 0 にするとiOSが「見えてへんから描画せんでええやろ」とサボることがある。
-       * なので、opacity: 0.01（ほぼ透明）にして、画面外ではなく背面に置く。
-       */
+      /* 動画素材（非表示） */
       .hidden-source {
         position: absolute; top: 0; left: 0;
-        width: 10px; height: 10px; /* サイズ0だと止まることがある */
-        opacity: 0.01; /* 完全に消さずにちょっと残す */
+        width: 10px; height: 10px;
+        opacity: 0.01; /* 完全に消さずに再生維持 */
         pointer-events: none;
-        z-index: -99; /* Canvasの後ろに隠す */
+        z-index: -99;
       }
 
       /* メイン表示＆録画用キャンバス */
@@ -173,7 +170,7 @@
       });
 
       // ==========================================
-      // 2. 合成ループ（重要修正点！）
+      // 2. 合成ループ（修正の肝）
       // ==========================================
       function drawCompositeFrame() {
         if (cameraVideo.readyState < 2) {
@@ -189,14 +186,19 @@
           canvas.height = ch;
         }
 
-        // 1. カメラ描画
+        // 1. カメラ描画（フィルターなし）
         ctx.globalCompositeOperation = 'source-over';
+        ctx.filter = 'none'; // リセット
         ctx.drawImage(cameraVideo, 0, 0, cw, ch);
 
         // 2. 雪の合成
-        // ★ここを「lighten（比較・明）」に変更！
-        // これで黒い背景（暗い部分）は透明になり、白い雪（明るい部分）だけが残る！
-        ctx.globalCompositeOperation = 'lighten';
+        ctx.globalCompositeOperation = 'screen'; 
+        
+        // ★ここが最大の修正ポイント！★
+        // 雪の動画を描画する瞬間だけ、コントラストを爆上げして明るさを下げる。
+        // これで「グレーっぽい黒背景」を強制的に「完全な黒（RGB 0,0,0）」にする。
+        // 結果、screen合成で完全に透明になる。
+        ctx.filter = 'contrast(200%) brightness(60%)';
 
         const vw = snowVideo.videoWidth;
         const vh = snowVideo.videoHeight;
@@ -218,11 +220,13 @@
             sy = 0;
           }
           
-          // スマホで動画の更新が止まっていないか確認（止まってたら強制再生）
           if (snowVideo.paused) snowVideo.play().catch(()=>{});
 
           ctx.drawImage(snowVideo, sx, sy, sw, sh, 0, 0, cw, ch);
         }
+
+        // 次のループのためにフィルターを戻しておく
+        ctx.filter = 'none';
 
         requestAnimationFrame(drawCompositeFrame);
       }
@@ -231,6 +235,7 @@
       // 3. 撮影・録画機能
       // ==========================================
       function takePhoto() {
+        // 写真を撮る瞬間もフィルター処理済みのCanvasを使うから綺麗
         const flash = document.getElementById('flash');
         flash.style.opacity = 1;
         setTimeout(() => flash.style.opacity = 0, 200);
