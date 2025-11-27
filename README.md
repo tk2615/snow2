@@ -1,7 +1,8 @@
-<html> 
+<!DOCTYPE html>
+<html>
   <head>
     <meta charset="utf-8">
-    <title>Snow AR Camera (Instant Play)</title>
+    <title>Snow AR Camera (Force Play Fix)</title>
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no, maximum-scale=1.0, viewport-fit=cover">
     <style>
       h1:first-of-type { display: none !important; }
@@ -46,7 +47,7 @@
         pointer-events: none; opacity: 0; z-index: -1;
       }
 
-      /* スタート画面（ただの目隠し） */
+      /* スタート画面 */
       #start-screen {
         position: fixed; top: 0; left: 0; width: 100%; height: 100%;
         background-color: rgba(0, 0, 0, 0.85); 
@@ -101,12 +102,12 @@
         justify-content: center; align-items: center; color: white;
       }
       #preview-img, #preview-video {
-        max-width: 90%; max-height: 65%;
+        max-width: 95%; max-height: 85%;
         border-radius: 8px; box-shadow: 0 0 20px rgba(0,0,0,0.5);
-        margin-bottom: 30px; object-fit: contain;
+        margin-bottom: 20px; object-fit: contain;
       }
       #preview-video { pointer-events: none; }
-      .preview-text { font-size: 14px; margin-bottom: 20px; color: #ccc; }
+      .preview-text { font-size: 14px; margin-bottom: 10px; color: #ccc; }
       .preview-buttons { display: flex; gap: 20px; }
       .btn { padding: 12px 30px; border-radius: 30px; border: none; font-size: 16px; font-weight: bold; cursor: pointer; }
       .btn-save { background-color: white; color: black; }
@@ -129,9 +130,10 @@
       #flip-btn { left: 20px; }
 
       #shutter-container {
-        position: fixed; bottom: 30px; left: 50%;
-        transform: translateX(-50%);
+        position: fixed; bottom: 40px; 
+        left: 50%;
         width: 80px; height: 80px;
+        transform: translateX(-50%) scale(1.5);
         z-index: 100; cursor: pointer;
         -webkit-tap-highlight-color: transparent; user-select: none;
         display: none;
@@ -285,7 +287,6 @@
           
           snowV1.loop = false;
           snowV2.loop = false;
-          
           enableStart();
 
         } catch (err) {
@@ -302,49 +303,61 @@
         startBtn.disabled = false;
         startBtn.classList.add('ready');
 
-        // ★ここで即・再生開始！
-        // START画面の裏で雪を降らせておく
         snowV1.style.opacity = 1; 
         snowV2.style.opacity = 0;
         
-        snowV1.play().catch(e => {
-            console.log("Autoplay blocked (expected on some devices):", e);
-            // ここでブロックされても、STARTボタンクリック時に再トライするからOK
-        });
-        
-        // 監視ループも即開始
+        // ロード完了時に即再生を試みる
+        attemptAutoPlay();
+      }
+
+      // 何度でも再生を試みる関数
+      function attemptAutoPlay() {
+        if(snowV1.paused) snowV1.play().catch(()=>{});
         monitorSnowVideo();
       }
 
       async function initApp() {
         loadAssets();
-        setTimeout(enableStart, 4000); // タイムアウト保険
+        setTimeout(enableStart, 4000);
         try {
           await initCamera(currentFacingMode);
         } catch (err) {
           showError("カメラエラー:\n" + err.message);
         }
+        
+        // ★ダメ押し: 画面のどこを触っても再生するように仕込む
+        document.body.addEventListener('touchstart', () => {
+             if(currentSnowVideo.paused) currentSnowVideo.play().catch(()=>{});
+        }, { once: true });
       }
 
       window.onload = initApp;
 
       startBtn.addEventListener('click', () => {
         if (startBtn.disabled) return;
+
+        // ★クリックイベントで確実に再生！
+        snowV1.play().then(() => {
+             // 再生成功したら画面を消す
+             closeStartScreen();
+        }).catch((e) => {
+             // 失敗しても画面は消して、後で再生を試みる
+             console.warn("Manual play blocked?", e);
+             closeStartScreen();
+        });
         
-        // ★ダメ押し再生
-        // 万が一、裏での自動再生がブロックされていた場合、このクリックで確実に動かす
-        if (currentSnowVideo.paused) {
-             currentSnowVideo.play().catch(e => console.log(e));
-        }
-        
-        // 即座に画面を消す（既に裏で動いている前提なので、待ち時間ゼロ）
+        // サブ動画も準備
+        snowV2.play().then(() => snowV2.pause()).catch(() => {});
+      });
+
+      function closeStartScreen() {
         startScreen.style.opacity = '0';
         setTimeout(() => { startScreen.style.display = 'none'; }, 300);
-        
         shutterContainer.style.display = 'block';
         flipBtn.style.display = 'flex';
         reloadBtn.style.display = 'flex';
-      });
+        monitorSnowVideo();
+      }
 
       async function initCamera(facingMode) {
         if (cameraVideo.srcObject) {
@@ -381,9 +394,8 @@
         const duration = currentSnowVideo.duration;
         const currentTime = currentSnowVideo.currentTime;
 
-        // 再生が止まってたら起こす（スタート画面の裏でも動かすため）
+        // ★最強の再生維持装置
         if(currentSnowVideo.paused && duration > 0 && !currentSnowVideo.ended) {
-            // 自動再生ポリシーに引っかかってない限り再生を試みる
             currentSnowVideo.play().catch(()=>{});
         }
 
