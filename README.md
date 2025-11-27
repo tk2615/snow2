@@ -1,7 +1,7 @@
 <html>
   <head>
     <meta charset="utf-8">
-    <title>Snow AR Camera (HowTo Transparent)</title>
+    <title>Snow AR Camera (Max Image)</title>
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no, maximum-scale=1.0, viewport-fit=cover">
 
     <style>
@@ -38,7 +38,6 @@
         display: flex; justify-content: center; align-items: center;
         backdrop-filter: blur(4px); -webkit-tap-highlight-color: transparent; 
         transition: background 0.2s;
-        /* 最初は隠しておく（スタート後に表示） */
         display: none;
       }
       .icon-btn:active { background: rgba(255, 255, 255, 0.3); }
@@ -47,46 +46,42 @@
       #reload-btn { right: 20px; }
       #flip-btn { left: 20px; }
 
-      /* ★ スタート画面（半透明オーバーレイ） */
+      /* ★ スタート画面（レイアウト調整） */
       #start-screen {
         position: fixed; top: 0; left: 0; width: 100%; height: 100%;
-        
-        /* ここで透け具合を調整 (0.6 = 60%の黒) */
         background-color: rgba(0, 0, 0, 0.6);
-        
         z-index: 3000;
         display: flex; 
         flex-direction: column;
-        justify-content: center; /* 垂直方向中央 */
+        justify-content: space-between;
         align-items: center;
-        padding: 40px 20px;
+        /* 余白をギリギリまで減らす */
+        padding: 20px 10px; 
         box-sizing: border-box;
         transition: opacity 0.5s ease;
       }
 
-      /* HowTo画像エリア */
+      /* 画像を入れるコンテナ（ボタン以外の空間を全部使う） */
       #howto-container {
-        flex: 1; /* 余白を埋めて、ボタンを下に押しやる */
+        flex: 1; /* 残りの高さを全部埋める */
+        width: 100%;
         display: flex;
         justify-content: center;
         align-items: center;
-        width: 100%;
         overflow: hidden;
+        margin-bottom: 20px; /* ボタンとの隙間 */
       }
 
+      /* ★ 画像を限界まで大きく */
       #howto-img {
-        max-width: 100%;
-        max-height: 80%; /* 画面の高さの8割くらいまでに制限 */
-        object-fit: contain;
-        
-        /* 背景を透明に */
+        width: 100%;
+        height: 100%;
+        object-fit: contain; /* アスペクト比を保ったまま枠いっぱいに広げる */
         background-color: transparent;
-        
-        /* もし白文字のPNGなら、影をつけると見やすい */
         filter: drop-shadow(0 0 10px rgba(0,0,0,0.5));
       }
       
-      /* STARTボタン（下部固定） */
+      /* STARTボタン */
       #start-btn {
         width: 80%; max-width: 300px;
         padding: 18px 0; 
@@ -101,8 +96,8 @@
         letter-spacing: 2px;
         box-shadow: 0 4px 15px rgba(255,255,255,0.2);
         transition: transform 0.1s;
-        margin-top: 20px;
-        margin-bottom: 40px; /* 下に少し余白 */
+        /* 下の余白を少し確保 */
+        margin-bottom: 20px; 
       }
       #start-btn:active { transform: scale(0.95); }
 
@@ -293,7 +288,7 @@
       }
 
       // ==========================================
-      // アプリ即時起動（裏で動かす）
+      // アプリ即時起動
       // ==========================================
       async function initApp() {
         try {
@@ -306,7 +301,6 @@
 
           await initCamera(currentFacingMode);
           
-          // 描画開始（Start画面の後ろで透けて見える）
           drawCompositeFrame(); 
 
         } catch (err) {
@@ -321,13 +315,11 @@
       // STARTボタン処理
       // ==========================================
       startBtn.addEventListener('click', () => {
-        // スタート画面をフェードアウト
         startScreen.style.opacity = '0';
         setTimeout(() => {
           startScreen.style.display = 'none';
         }, 500);
 
-        // UI表示
         shutterContainer.style.display = 'block';
         flipBtn.style.display = 'flex';
         reloadBtn.style.display = 'flex';
