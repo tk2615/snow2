@@ -567,24 +567,5 @@
         document.body.removeChild(a);
       }
     </script>
-
-  <style>
-  /* タイトル周りの文字（リンク含む）を全部「黒」にする */
-  header h1, header h2, header a, .site-title, .project-name {
-    color: #000000 !important; /* 真っ黒 */
-  }
-
-  /* もし下線や枠線が青いなら、それも黒くする */
-  header, .site-header {
-    border-color: #000000 !important;
-  }
-  
-  /* オマケ：もし背景が青くて変えたいなら、下のコメントアウトを外してな */
-  /* header, .site-header {
-    background-color: #ffffff !important; 
-    background-image: none !important;
-  }
-  */
-</style>
   </body>
 </html>
