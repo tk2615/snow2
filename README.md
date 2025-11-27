@@ -1,7 +1,7 @@
 <html>
   <head>
     <meta charset="utf-8">
-    <title>Snow AR Camera (FHD Lightweight)</title>
+    <title>Snow AR Camera (Clean Preview & Stable)</title>
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no, maximum-scale=1.0, viewport-fit=cover">
 
     <style>
@@ -51,7 +51,7 @@
         z-index: 3000;
         display: flex; flex-direction: column;
         justify-content: space-between; align-items: center;
-        padding: 20px 10px; box-sizing: border-box;
+        padding: 40px 20px; box-sizing: border-box;
         transition: opacity 0.5s ease;
       }
 
@@ -74,7 +74,7 @@
         border: none; border-radius: 50px;
         cursor: pointer; font-weight: 900; letter-spacing: 2px;
         box-shadow: 0 4px 15px rgba(255,255,255,0.2);
-        transition: transform 0.1s; margin-bottom: 20px; 
+        transition: transform 0.1s; margin-bottom: 40px; 
       }
       #start-btn:active { transform: scale(0.95); }
 
@@ -87,6 +87,7 @@
       }
       #error-text { font-size: 16px; line-height: 1.5; color: white; }
 
+      /* プレビュー画面 */
       #preview-modal {
         position: fixed; top: 0; left: 0; width: 100%; height: 100%;
         background-color: rgba(0,0,0,0.95); z-index: 2000;
@@ -98,6 +99,9 @@
         border-radius: 8px; box-shadow: 0 0 20px rgba(0,0,0,0.5);
         margin-bottom: 30px; object-fit: contain;
       }
+      /* プレビュー動画のクリック無効化（再生バーを出さないため） */
+      #preview-video { pointer-events: none; }
+
       .preview-text { font-size: 14px; margin-bottom: 20px; color: #ccc; }
       .preview-buttons { display: flex; gap: 20px; }
       .btn { padding: 12px 30px; border-radius: 30px; border: none; font-size: 16px; font-weight: bold; cursor: pointer; }
@@ -159,7 +163,7 @@
 
     <div id="preview-modal">
       <img id="preview-img">
-      <video id="preview-video" controls playsinline></video>
+      <video id="preview-video" autoplay loop playsinline muted></video>
       <p id="preview-msg-photo" class="preview-text">画像長押しで保存してください</p>
       <div class="preview-buttons">
         <button id="btn-save-video" class="btn btn-save" style="display:none;">Download</button>
@@ -283,12 +287,12 @@
         }
         let stream = null;
         try {
-          // ★変更点：フルHD (1920x1080) を要求して負荷を下げる
+          // ★軽量化: 720p (1280x720) を指定して安定化
           stream = await navigator.mediaDevices.getUserMedia({
             video: { 
               facingMode: facingMode,
-              width: { ideal: 1920 }, // 4K(4096) -> FHD(1920)
-              height: { ideal: 1080 } 
+              width: { ideal: 1280 }, 
+              height: { ideal: 720 } 
             },
             audio: false 
           });
@@ -360,16 +364,16 @@
           const timeLeft = duration - currentTime;
           
           if (timeLeft <= FADE_DURATION) {
-            if (nextSnowVideo.paused) {
-              nextSnowVideo.currentTime = 0;
-              nextSnowVideo.play().catch(()=>{});
-            }
+            // ★安定化: 動画が止まっていたら再生
+            if (nextSnowVideo.paused) nextSnowVideo.play().catch(()=>{});
+            
             const alphaCurrent = Math.max(0, timeLeft / FADE_DURATION);
             const alphaNext = 1.0 - alphaCurrent;
             drawSnowToBuffer(currentSnowVideo, vw, vh, alphaCurrent);
             drawSnowToBuffer(nextSnowVideo, vw, vh, alphaNext);
           } else {
             drawSnowToBuffer(currentSnowVideo, vw, vh, 1.0);
+            // 待機中の動画は停止
             if (!nextSnowVideo.paused) {
               nextSnowVideo.pause();
               nextSnowVideo.currentTime = 0;
@@ -383,6 +387,9 @@
             nextSnowVideo.pause();
             nextSnowVideo.currentTime = 0;
           }
+        } else {
+            // 再生が開始されてない場合の保険
+            if(currentSnowVideo.paused) currentSnowVideo.play().catch(()=>{});
         }
 
         ctx.globalCompositeOperation = 'source-over';
@@ -440,8 +447,12 @@
           previewVideo.style.display = 'block';
           previewMsgPhoto.style.display = 'none';
           btnSaveVideo.style.display = 'block';
+          
           previewVideo.src = url;
+          // ★プレビュー再生 (ミュートで自動再生)
+          previewVideo.muted = true; 
           previewVideo.play().catch(()=>{});
+          
           btnSaveVideo.onclick = () => downloadFile(url, filename);
         }
       }
@@ -451,6 +462,7 @@
         previewVideo.pause();
         previewVideo.src = "";
         previewImg.src = "";
+        // プレビュー終了時に雪動画を再開
         if(currentSnowVideo.paused) currentSnowVideo.play().catch(()=>{});
         shutterContainer.style.display = 'block';
         flipBtn.style.display = 'flex';
