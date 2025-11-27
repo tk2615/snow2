@@ -1,7 +1,7 @@
 <html>
   <head>
     <meta charset="utf-8">
-    <title>Snow AR Camera (HowTo Start)</title>
+    <title>Snow AR Camera (Translucent Start)</title>
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no, maximum-scale=1.0, viewport-fit=cover">
 
     <style>
@@ -38,36 +38,45 @@
         display: flex; justify-content: center; align-items: center;
         backdrop-filter: blur(4px); -webkit-tap-highlight-color: transparent; 
         transition: background 0.2s;
+        /* 最初は隠しておく（スタート後に表示） */
+        display: none;
       }
       .icon-btn:active { background: rgba(255, 255, 255, 0.3); }
       .icon-btn svg { width: 24px; height: 24px; fill: white; }
 
-      #reload-btn { right: 20px; display: none; /* 最初は隠す */ }
-      #flip-btn { left: 20px; display: none; }
+      #reload-btn { right: 20px; }
+      #flip-btn { left: 20px; }
 
-      /* ★ スタート画面（復活＆レイアウト変更） */
+      /* ★ スタート画面（半透明に変更） */
       #start-screen {
         position: fixed; top: 0; left: 0; width: 100%; height: 100%;
-        background-color: #000;
-        z-index: 3000; /* 最前面 */
+        /* ここを変更！後ろが透けるようにする */
+        background-color: rgba(0, 0, 0, 0.6);
+        
+        z-index: 3000;
         display: flex; 
         flex-direction: column;
-        justify-content: space-between; /* 上下に要素を散らす */
+        justify-content: space-between;
         align-items: center;
-        padding: 40px 20px; /* 外側の余白 */
+        padding: 40px 20px;
         box-sizing: border-box;
+        
+        /* ふわっと消えるアニメーション用 */
+        transition: opacity 0.5s ease;
       }
 
       /* HowTo画像 */
       #howto-img {
-        flex-grow: 1; /* 余ったスペースを埋める */
+        flex-grow: 1;
         width: 100%;
-        max-width: 400px; /* 画像がデカくなりすぎないように */
-        object-fit: contain; /* 比率を保って収める */
+        max-width: 400px;
+        object-fit: contain;
         margin-bottom: 20px;
+        /* 画像を見やすくするために少しドロップシャドウ */
+        filter: drop-shadow(0 0 10px rgba(0,0,0,0.5));
       }
       
-      /* STARTボタン（下部に配置） */
+      /* STARTボタン */
       #start-btn {
         width: 80%; max-width: 300px;
         padding: 18px 0; 
@@ -82,7 +91,6 @@
         letter-spacing: 2px;
         box-shadow: 0 4px 15px rgba(255,255,255,0.2);
         transition: transform 0.1s;
-        /* 下側の余白はpaddingで確保 */
         margin-bottom: 40px; 
       }
       #start-btn:active { transform: scale(0.95); }
@@ -98,7 +106,6 @@
         padding: 20px; color: #ff3b30; text-align: center;
       }
       #error-text { font-size: 16px; line-height: 1.5; color: white; }
-
 
       /* プレビュー画面 */
       #preview-modal {
@@ -176,7 +183,6 @@
 
     <div id="start-screen">
       <img id="howto-img" src="howto.png" alt="How to use">
-      
       <button id="start-btn">START</button>
     </div>
 
@@ -273,35 +279,52 @@
       }
 
       // ==========================================
-      // STARTボタンで初期化
+      // アプリ即時起動 (裏で動かす)
       // ==========================================
-      startBtn.addEventListener('click', async () => {
-        // ボタン連打防止
-        startBtn.disabled = true;
-        startBtn.textContent = "Loading...";
-        
+      async function initApp() {
         try {
           snowV1.loop = false;
           snowV2.loop = false;
           
-          await snowV1.play();
+          // 動画再生
+          await snowV1.play().catch(e => {
+            console.warn("自動再生ブロック: タップ待ち", e);
+          });
+
+          // カメラ起動
           await initCamera(currentFacingMode);
           
-          // 画面遷移
-          startScreen.style.display = 'none';
-          
-          shutterContainer.style.display = 'block';
-          flipBtn.style.display = 'flex';
-          reloadBtn.style.display = 'flex';
-          
+          // 描画開始（スタート画面の後ろで動く）
           drawCompositeFrame(); 
 
         } catch (err) {
-          startBtn.disabled = false;
-          startBtn.textContent = "START";
-          showError("カメラの起動に失敗しました。\n" + err.message);
+          showError("カメラエラー:\n" + err.message);
         }
+      }
+
+      // ページ読み込みで即実行
+      window.onload = initApp;
+
+
+      // ==========================================
+      // STARTボタン処理 (UI表示切り替えのみ)
+      // ==========================================
+      startBtn.addEventListener('click', () => {
+        // スタート画面をフェードアウトして消す
+        startScreen.style.opacity = '0';
+        setTimeout(() => {
+          startScreen.style.display = 'none';
+        }, 500);
+
+        // UIを表示
+        shutterContainer.style.display = 'block';
+        flipBtn.style.display = 'flex';
+        reloadBtn.style.display = 'flex';
+        
+        // もし動画が止まってたら再生（ブロック対策の保険）
+        if(currentSnowVideo.paused) currentSnowVideo.play().catch(()=>{});
       });
+
 
       // ==========================================
       // カメラ初期化
@@ -353,6 +376,7 @@
           flipBtn.style.opacity = 1;
         }
       });
+
 
       // ==========================================
       // 描画ループ
@@ -491,6 +515,7 @@
 
       document.addEventListener("visibilitychange", () => {
         if (document.visibilityState === "visible") {
+          // スタート画面もプレビューも閉じてる時のみ自動再開
           if (previewModal.style.display === 'none' && startScreen.style.display === 'none') {
              if (currentSnowVideo.paused) currentSnowVideo.play().catch(()=>{});
              if (cameraVideo.paused) cameraVideo.play().catch(()=>{});
