@@ -1,8 +1,7 @@
-<!DOCTYPE html>
 <html>
   <head>
     <meta charset="utf-8">
-    <title>Snow AR Camera (Sharp & Fast)</title>
+    <title>Snow AR Camera (High Quality & Smart Load)</title>
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no, maximum-scale=1.0, viewport-fit=cover">
     <style>
       h1:first-of-type { display: none !important; }
@@ -72,13 +71,19 @@
       #start-btn {
         width: 60%; max-width: 300px; padding: 18px 0; 
         font-size: 20px; font-family: sans-serif;
-        background: white; color: black;
+        background: #666; color: #ccc; /* 最初は無効化色 */
         border: none; border-radius: 50px;
-        cursor: pointer; font-weight: 900; letter-spacing: 2px;
-        box-shadow: 0 4px 15px rgba(255,255,255,0.2);
-        transition: transform 0.1s; margin-bottom: 40px; 
+        cursor: not-allowed; font-weight: 900; letter-spacing: 2px;
+        box-shadow: none;
+        transition: all 0.3s; margin-bottom: 40px; 
       }
-      #start-btn:active { transform: scale(0.95); }
+      /* ロード完了時のスタイル */
+      #start-btn.ready {
+        background: white; color: black;
+        cursor: pointer;
+        box-shadow: 0 4px 15px rgba(255,255,255,0.2);
+      }
+      #start-btn.ready:active { transform: scale(0.95); }
 
       #error-overlay {
         position: fixed; top: 0; left: 0; width: 100%; height: 100%;
@@ -152,7 +157,7 @@
       <div id="howto-container">
         <img id="howto-img" src="howto.png" alt="How to use">
       </div>
-      <button id="start-btn">START</button>
+      <button id="start-btn" disabled>LOADING...</button>
     </div>
 
     <div id="error-overlay">
@@ -172,8 +177,8 @@
     </div>
 
     <video id="camera-feed" class="hidden-source" autoplay muted playsinline></video>
-    <video id="snow-1" class="hidden-source" src="snow.mp4" muted playsinline webkit-playsinline></video>
-    <video id="snow-2" class="hidden-source" src="snow.mp4" muted playsinline webkit-playsinline></video>
+    <video id="snow-1" class="hidden-source" muted playsinline webkit-playsinline></video>
+    <video id="snow-2" class="hidden-source" muted playsinline webkit-playsinline></video>
 
     <canvas id="work-canvas"></canvas>
 
@@ -193,12 +198,11 @@
 
     <script>
       // ==========================================
-      // 【画質調整設定】
+      // 【設定】 画質はMAX (1.0) に戻したで！
       // ==========================================
-      // 0.9 = ほぼオリジナル画質だが、わずかに軽くする
-      // 1.0 にすれば完全に端末のCSSピクセル等倍になるで
-      const RENDER_SCALE = 0.9; 
+      const RENDER_SCALE = 1.0; 
       const TARGET_FPS = 30;
+      const SNOW_VIDEO_URL = 'snow.mp4'; // 動画ファイル名はここで指定
       // ==========================================
 
       const cameraVideo = document.getElementById('camera-feed');
@@ -231,7 +235,8 @@
       const errorText = document.getElementById('error-text');
       
       let currentPreviewUrl = null;
-      
+      let videoBlobUrl = null;
+
       const radius = progressCircle.r.baseVal.value;
       const circumference = radius * 2 * Math.PI;
       progressCircle.style.strokeDasharray = `${circumference} ${circumference}`;
@@ -249,14 +254,11 @@
       const LONG_PRESS_DURATION = 500;
 
       let currentFacingMode = 'environment';
-
       let cachedWidth = 0;
       let cachedHeight = 0;
       let needsResize = true;
       let lastFrameTime = 0;
       const FRAME_INTERVAL = 1000 / TARGET_FPS;
-
-      // ★計算キャッシュ用変数
       let snowDrawParams = { sx:0, sy:0, sw:0, sh:0, active: false };
 
       function showError(msg) {
@@ -265,18 +267,49 @@
         console.error(msg);
       }
 
-      async function initApp() {
+      // ★新機能: 動画アセットのスマート読み込み
+      async function loadAssets() {
         try {
+          // fetchで動画を一括ダウンロード
+          const response = await fetch(SNOW_VIDEO_URL);
+          if (!response.ok) throw new Error(`動画が見つかりません: ${response.status}`);
+          
+          const blob = await response.blob();
+          videoBlobUrl = URL.createObjectURL(blob);
+          
+          // 同じメモリURLを両方のプレイヤーにセット
+          snowV1.src = videoBlobUrl;
+          snowV2.src = videoBlobUrl;
+          
+          // 動画のロード待機
+          await Promise.all([
+            new Promise(r => snowV1.onloadeddata = r),
+            new Promise(r => snowV2.onloadeddata = r)
+          ]);
+
+          // ループ等の設定
           snowV1.loop = false;
           snowV2.loop = false;
-          snowV1.load();
-          snowV2.load();
           
+          // UIを有効化
+          startBtn.textContent = "START";
+          startBtn.disabled = false;
+          startBtn.classList.add('ready');
+
+        } catch (err) {
+          showError("動画ロードエラー: " + err.message);
+        }
+      }
+
+      // アプリ初期化
+      async function initApp() {
+        // 先にアセット読み込みを開始
+        loadAssets();
+        
+        try {
           await initCamera(currentFacingMode);
-          
           updateDimensions();
           drawCompositeFrame(0);
-
         } catch (err) {
           showError("カメラエラー:\n" + err.message);
         }
@@ -286,6 +319,7 @@
       window.addEventListener('resize', () => { needsResize = true; });
 
       startBtn.addEventListener('click', () => {
+        if (startBtn.disabled) return;
         startScreen.style.opacity = '0';
         setTimeout(() => { startScreen.style.display = 'none'; }, 500);
         shutterContainer.style.display = 'block';
@@ -300,7 +334,7 @@
         }
         let stream = null;
         try {
-          // ★修正ポイント: HD画質(720p)を指定して画質を確保
+          // 画質優先 (HD)
           stream = await navigator.mediaDevices.getUserMedia({
             video: { 
               facingMode: facingMode,
@@ -353,10 +387,9 @@
       function updateDimensions() {
         const displayW = window.innerWidth;
         const displayH = window.innerHeight;
-
         if (displayW === 0 || displayH === 0) return;
 
-        // ★修正ポイント: 画質優先でスケール計算
+        // RENDER_SCALE = 1.0 なので画面解像度そのまま
         const renderW = Math.floor(displayW * RENDER_SCALE);
         const renderH = Math.floor(displayH * RENDER_SCALE);
 
@@ -373,13 +406,11 @@
         if(currentSnowVideo.videoWidth) {
            updateSnowParams(currentSnowVideo.videoWidth, currentSnowVideo.videoHeight, renderW, renderH);
         }
-        
         needsResize = false;
       }
 
       function drawCompositeFrame(timestamp) {
         requestAnimationFrame(drawCompositeFrame);
-
         const elapsed = timestamp - lastFrameTime;
         if (elapsed < FRAME_INTERVAL) return;
         lastFrameTime = timestamp - (elapsed % FRAME_INTERVAL);
@@ -427,7 +458,9 @@
             nextSnowVideo.currentTime = 0;
           }
         } else {
-            if(currentSnowVideo.paused) currentSnowVideo.play().catch(()=>{});
+            if(currentSnowVideo.paused && startBtn.disabled === false && startScreen.style.display === 'none') {
+                currentSnowVideo.play().catch(()=>{});
+            }
         }
 
         // カメラ描画
@@ -470,7 +503,7 @@
       }
 
       function showPreview(type, url, filename) {
-        if (currentPreviewUrl) URL.revokeObjectURL(currentPreviewUrl);
+        if (currentPreviewUrl && currentPreviewUrl !== videoBlobUrl) URL.revokeObjectURL(currentPreviewUrl);
         currentPreviewUrl = url;
         previewModal.style.display = 'flex';
         shutterContainer.style.display = 'none';
@@ -523,8 +556,6 @@
         const flash = document.getElementById('flash');
         flash.style.opacity = 1;
         setTimeout(() => flash.style.opacity = 0, 200);
-        // 保存時だけはオリジナル画質にしたいならここでcanvasサイズ一時変更もできるけど
-        // プレビューとの整合性をとるため、今の解像度で保存するで
         const dataURL = canvas.toDataURL('image/png');
         showPreview('photo', dataURL);
         setTimeout(() => { shutterLock = false; }, 1000);
