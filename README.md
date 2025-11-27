@@ -1,7 +1,8 @@
+<!DOCTYPE html>
 <html>
   <head>
     <meta charset="utf-8">
-    <title>Snow AR Camera (High Quality Lite)</title>
+    <title>Snow AR Camera (Seamless Loop)</title>
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no, maximum-scale=1.0, viewport-fit=cover">
     <style>
       h1:first-of-type { display: none !important; }
@@ -28,15 +29,16 @@
         z-index: 1;
       }
 
-      /* 雪の動画（1枚ループ） */
-      #snow-video {
+      /* 雪の動画（2枚重ね） */
+      .snow-layer {
         position: absolute; top: 0; left: 0; width: 100%; height: 100%;
         object-fit: cover;
         z-index: 2;
-        mix-blend-mode: screen; 
+        mix-blend-mode: screen; /* 軽い合成モード */
         pointer-events: none;
         opacity: 0; 
-        transition: opacity 0.5s ease;
+        /* JSで制御するのでCSS transitionは外すか短めに */
+        will-change: opacity; 
       }
 
       /* 録画用キャンバス */
@@ -88,13 +90,18 @@
       #start-btn {
         width: 60%; max-width: 300px; padding: 18px 0; 
         font-size: 20px; font-family: sans-serif;
-        background: white; color: black;
+        background: #666; color: #ccc;
         border: none; border-radius: 50px;
-        cursor: pointer; font-weight: 900; letter-spacing: 2px;
-        box-shadow: 0 4px 15px rgba(255,255,255,0.2);
-        transition: transform 0.1s; margin-bottom: 40px; 
+        cursor: not-allowed; font-weight: 900; letter-spacing: 2px;
+        box-shadow: none;
+        transition: all 0.3s; margin-bottom: 40px; 
       }
-      #start-btn:active { transform: scale(0.95); }
+      #start-btn.ready {
+        background: white; color: black;
+        cursor: pointer;
+        box-shadow: 0 4px 15px rgba(255,255,255,0.2);
+      }
+      #start-btn.ready:active { transform: scale(0.95); }
 
       #error-overlay {
         position: fixed; top: 0; left: 0; width: 100%; height: 100%;
@@ -168,7 +175,7 @@
       <div id="howto-container">
         <img id="howto-img" src="howto.png" alt="How to use">
       </div>
-      <button id="start-btn">START</button>
+      <button id="start-btn" disabled>LOADING...</button>
     </div>
 
     <div id="error-overlay">
@@ -189,7 +196,8 @@
 
     <div id="view-container">
       <video id="camera-feed" autoplay muted playsinline></video>
-      <video id="snow-video" src="snow.mp4" loop muted playsinline webkit-playsinline></video>
+      <video id="snow-1" class="snow-layer" muted playsinline webkit-playsinline></video>
+      <video id="snow-2" class="snow-layer" muted playsinline webkit-playsinline></video>
     </div>
 
     <canvas id="work-canvas"></canvas>
@@ -209,8 +217,15 @@
     <div id="flash"></div>
 
     <script>
+      const SNOW_VIDEO_URL = 'snow.mp4';
+      // クロスフェードの秒数。長いほど滑らかやけど重なる時間が長くなる
+      const FADE_DURATION = 0.5; 
+
       const cameraVideo = document.getElementById('camera-feed');
-      const snowVideo = document.getElementById('snow-video');
+      const snowV1 = document.getElementById('snow-1');
+      const snowV2 = document.getElementById('snow-2');
+      let currentSnowVideo = snowV1;
+      let nextSnowVideo = snowV2;
 
       const canvas = document.getElementById('work-canvas');
       const ctx = canvas.getContext('2d', { alpha: false, desynchronized: true });
@@ -233,6 +248,7 @@
       const errorText = document.getElementById('error-text');
       
       let currentPreviewUrl = null;
+      let videoBlobUrl = null;
 
       const radius = progressCircle.r.baseVal.value;
       const circumference = radius * 2 * Math.PI;
@@ -251,7 +267,7 @@
       const LONG_PRESS_DURATION = 500;
 
       let currentFacingMode = 'environment';
-      let recordLoopId;
+      let snowLoopId;
 
       function showError(msg) {
         errorOverlay.style.display = 'flex';
@@ -259,7 +275,56 @@
         console.error(msg);
       }
 
+      // ★動画ローダー: Blobとして1回だけ読み込む（キャッシュ対策＆高速化）
+      async function loadAssets() {
+        try {
+          // fetchで動画を一括ダウンロード
+          const response = await fetch(SNOW_VIDEO_URL);
+          if (!response.ok) throw new Error(`動画ロード失敗: ${response.status}`);
+          
+          const blob = await response.blob();
+          videoBlobUrl = URL.createObjectURL(blob);
+          
+          // 同じメモリURLを両方のプレイヤーにセット
+          snowV1.src = videoBlobUrl;
+          snowV2.src = videoBlobUrl;
+          
+          // ロード待機
+          await Promise.all([
+            new Promise(r => snowV1.onloadeddata = r),
+            new Promise(r => snowV2.onloadeddata = r)
+          ]);
+          
+          snowV1.loop = false; // JS制御するのでloopはfalse
+          snowV2.loop = false;
+          
+          enableStart();
+
+        } catch (err) {
+            // fetch失敗時のフォールバック（直接src指定）
+            console.warn("Blob load failed, using direct src. " + err.message);
+            snowV1.src = SNOW_VIDEO_URL;
+            snowV2.src = SNOW_VIDEO_URL;
+            setTimeout(enableStart, 1000);
+        }
+      }
+
+      function enableStart() {
+        if(startBtn.disabled === false) return;
+        startBtn.textContent = "START";
+        startBtn.disabled = false;
+        startBtn.classList.add('ready');
+        
+        // 初期状態: V1を表示、V2は隠す
+        snowV1.style.opacity = 1;
+        snowV2.style.opacity = 0;
+      }
+
       async function initApp() {
+        loadAssets();
+        // 万が一ロードがコケたとき用の保険タイマー
+        setTimeout(enableStart, 4000);
+
         try {
           await initCamera(currentFacingMode);
         } catch (err) {
@@ -270,6 +335,7 @@
       window.onload = initApp;
 
       startBtn.addEventListener('click', () => {
+        if (startBtn.disabled) return;
         startScreen.style.opacity = '0';
         setTimeout(() => { startScreen.style.display = 'none'; }, 300);
         
@@ -277,13 +343,13 @@
         flipBtn.style.display = 'flex';
         reloadBtn.style.display = 'flex';
         
-        // 動画を強制再生
-        snowVideo.play()
-            .then(() => { snowVideo.style.opacity = 1; })
-            .catch(e => {
-                console.error("Play error:", e);
-                snowVideo.style.opacity = 1;
-            });
+        // ★強制再生: ユーザーアクションで両方の動画を一旦叩く
+        snowV1.play().catch(e => console.log(e));
+        // next側は準備だけして止めておく
+        snowV2.play().then(() => snowV2.pause()).catch(() => {});
+        
+        // 監視開始
+        monitorSnowVideo();
       });
 
       async function initCamera(facingMode) {
@@ -292,7 +358,7 @@
         }
         let stream = null;
         try {
-          // ★ここ！画質をHD(1280x720)に戻したで！
+          // ★高画質HD (1280x720) 指定
           stream = await navigator.mediaDevices.getUserMedia({
             video: { 
               facingMode: facingMode,
@@ -317,6 +383,68 @@
         finally { flipBtn.style.pointerEvents = 'auto'; flipBtn.style.opacity = 1; }
       });
 
+      // ★スムーズループ監視ロジック (Relay方式)
+      function monitorSnowVideo() {
+        snowLoopId = requestAnimationFrame(monitorSnowVideo);
+
+        const duration = currentSnowVideo.duration;
+        const currentTime = currentSnowVideo.currentTime;
+
+        // 再生が止まってたら叩き起こす
+        if(currentSnowVideo.paused && duration > 0 && !currentSnowVideo.ended) {
+            currentSnowVideo.play().catch(()=>{});
+        }
+
+        if (duration && duration > 0) {
+          const timeLeft = duration - currentTime;
+          
+          // 残り時間がフェード時間以下になったら、次の動画をスタートさせる
+          if (timeLeft <= FADE_DURATION) {
+            
+            // 次の動画がまだ止まってたら再生開始
+            if (nextSnowVideo.paused) {
+                nextSnowVideo.play().catch(()=>{});
+            }
+            
+            // クロスフェード計算 (0.0 〜 1.0)
+            const alphaCurrent = Math.max(0, timeLeft / FADE_DURATION);
+            const alphaNext = 1.0 - alphaCurrent;
+
+            // CSS opacityを更新
+            currentSnowVideo.style.opacity = alphaCurrent;
+            nextSnowVideo.style.opacity = alphaNext;
+
+          } else {
+            // 通常再生中 (フェード時間外)
+            // 確実にメインを表示、サブを隠す
+            currentSnowVideo.style.opacity = 1;
+            nextSnowVideo.style.opacity = 0;
+            
+            // サブが動いてたら止める（省エネ）
+            if (!nextSnowVideo.paused) {
+              nextSnowVideo.pause();
+              nextSnowVideo.currentTime = 0;
+            }
+          }
+
+          // 動画終了、または時間が来たらメイン交代
+          if (currentSnowVideo.ended || timeLeft <= 0) {
+            // 交代処理
+            currentSnowVideo.style.opacity = 0;
+            nextSnowVideo.style.opacity = 1;
+            
+            // 役職入れ替え
+            const temp = currentSnowVideo;
+            currentSnowVideo = nextSnowVideo;
+            nextSnowVideo = temp;
+            
+            // 旧メインは停止＆巻き戻し
+            nextSnowVideo.pause();
+            nextSnowVideo.currentTime = 0;
+          }
+        }
+      }
+
       function drawToCanvasOnce() {
         const vw = window.innerWidth;
         const vh = window.innerHeight;
@@ -329,6 +457,7 @@
         ctx.fillStyle = '#000000';
         ctx.fillRect(0, 0, vw, vh);
 
+        // カメラ
         const camW = cameraVideo.videoWidth;
         const camH = cameraVideo.videoHeight;
         if(camW && camH) {
@@ -345,9 +474,12 @@
             ctx.drawImage(cameraVideo, csx, csy, csw, csh, 0, 0, vw, vh);
         }
 
+        // 雪: 2つの動画の状態（透明度）を見て描画
         ctx.globalCompositeOperation = 'screen';
         
-        function drawVideoCover(vid) {
+        function drawVideoCover(vid, opacity) {
+            if (opacity <= 0.01) return; // 見えないなら描かない
+            
             const vW = vid.videoWidth;
             const vH = vid.videoHeight;
             if(!vW) return;
@@ -361,16 +493,23 @@
                 sh = vH; sw = vH * cAspect;
                 sx = (vW - sw) / 2; sy = 0;
             }
+            
+            ctx.globalAlpha = opacity;
             ctx.drawImage(vid, sx, sy, sw, sh, 0, 0, vw, vh);
+            ctx.globalAlpha = 1.0;
         }
 
-        if(!snowVideo.paused) {
-             drawVideoCover(snowVideo);
-        }
+        // 現在のCSS opacityを取得してCanvasに反映
+        const op1 = parseFloat(snowV1.style.opacity || 0);
+        const op2 = parseFloat(snowV2.style.opacity || 0);
+
+        // 停止中でなければ描画
+        if(!snowV1.paused || op1 > 0) drawVideoCover(snowV1, op1);
+        if(!snowV2.paused || op2 > 0) drawVideoCover(snowV2, op2);
       }
 
       function showPreview(type, url, filename) {
-        if (currentPreviewUrl) URL.revokeObjectURL(currentPreviewUrl);
+        if (currentPreviewUrl && currentPreviewUrl !== videoBlobUrl) URL.revokeObjectURL(currentPreviewUrl);
         currentPreviewUrl = url;
         previewModal.style.display = 'flex';
         shutterContainer.style.display = 'none';
@@ -400,7 +539,9 @@
         previewVideo.pause();
         previewVideo.src = "";
         previewImg.src = "";
-        if(snowVideo.paused) snowVideo.play().catch(()=>{});
+        // 再開
+        if(currentSnowVideo.paused) currentSnowVideo.play().catch(()=>{});
+        
         shutterContainer.style.display = 'block';
         flipBtn.style.display = 'flex';
         reloadBtn.style.display = 'flex';
@@ -411,7 +552,7 @@
       document.addEventListener("visibilitychange", () => {
         if (document.visibilityState === "visible") {
           if (previewModal.style.display === 'none' && startScreen.style.display === 'none') {
-             if (snowVideo.paused) snowVideo.play().catch(()=>{});
+             if (currentSnowVideo.paused) currentSnowVideo.play().catch(()=>{});
              if (cameraVideo.paused) cameraVideo.play().catch(()=>{});
           }
         }
