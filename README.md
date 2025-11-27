@@ -50,7 +50,7 @@
       <a-entity camera look-controls click-to-play>
         
         <a- 
-          src="#snow.mp4" 
+          src="snow.mp4" 
           position="0 0 -3" 
           width="4" 
           height="2.25"
