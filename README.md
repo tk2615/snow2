@@ -1,7 +1,7 @@
 <html>
   <head>
     <meta charset="utf-8">
-    <title>Snow AR Camera (Final Ultimate)</title>
+    <title>Snow AR Camera (Crossfade Loop)</title>
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no, maximum-scale=1.0, viewport-fit=cover">
 
     <style>
@@ -35,7 +35,7 @@
 
       /* --- UIパーツ --- */
       
-      /* リロードボタン（新機能） */
+      /* リロードボタン */
       #reload-btn {
         position: fixed; top: 20px; right: 20px;
         z-index: 500;
@@ -140,10 +140,14 @@
 
     <script>
       const cameraVideo = document.getElementById('camera-feed');
-      // 動画を2つ取得
+      // 動画2つ
       const snowV1 = document.getElementById('snow-1');
       const snowV2 = document.getElementById('snow-2');
-      let activeSnowVideo = snowV1; // 現在描画に使っている動画
+      
+      // クロスフェード管理用の変数
+      let currentSnowVideo = snowV1; // メインで流れてる方
+      let nextSnowVideo = snowV2;    // 次に待機してる方
+      const FADE_DURATION = 1.0;     // 1秒かけてクロスフェードさせる
 
       const canvas = document.getElementById('work-canvas');
       const ctx = canvas.getContext('2d');
@@ -167,50 +171,15 @@
       let recordingStartTime;
       let selectedMimeType = '';
       
-      // 誤操作・連写防止用フラグ
       let pressTimer;
       let isLongPress = false;
-      let isPressing = false; // マウス/タッチが押されているか
-      let shutterLock = false; // 連写防止ロック
+      let isPressing = false;
+      let shutterLock = false; 
       const LONG_PRESS_DURATION = 500;
 
       function log(msg) {
         statusMsg.innerHTML = msg;
         console.log(msg);
-      }
-
-      // ==========================================
-      // 0. シームレスループ管理（二刀流ロジック）
-      // ==========================================
-      function initSeamlessLoop() {
-        // メイン動画の準備
-        snowV1.loop = false; // 手動で切り替えるのでloop属性は切る
-        snowV2.loop = false;
-
-        // 動画1の監視
-        snowV1.addEventListener('timeupdate', () => {
-          checkAndSwitch(snowV1, snowV2);
-        });
-        // 動画2の監視
-        snowV2.addEventListener('timeupdate', () => {
-          checkAndSwitch(snowV2, snowV1);
-        });
-      }
-
-      function checkAndSwitch(current, next) {
-        // 残り時間が0.3秒を切ったら次の動画を再生開始
-        if (current.duration - current.currentTime < 0.3) {
-          if (next.paused) {
-            next.currentTime = 0;
-            next.play().catch(()=>{});
-          }
-        }
-        // 現在の動画が終わったら、描画対象を次に切り替え
-        if (current.ended) {
-          activeSnowVideo = next; // 描画対象切り替え
-          current.pause();
-          current.currentTime = 0;
-        }
       }
 
       // ==========================================
@@ -222,11 +191,12 @@
         log("初期化中...");
 
         try {
-          // 動画ループシステムの準備
-          initSeamlessLoop();
-          await snowV1.play(); // 最初はV1から
-          activeSnowVideo = snowV1;
-
+          // 動画の準備
+          snowV1.loop = false; // ループはJSで制御するから切る
+          snowV2.loop = false;
+          
+          await snowV1.play();
+          
           // カメラ取得
           let stream = null;
           try {
@@ -259,7 +229,7 @@
       });
 
       // ==========================================
-      // 2. 合成ループ
+      // 2. 描画ループ（クロスフェードロジック）
       // ==========================================
       function drawCompositeFrame() {
         const cw = cameraVideo.videoWidth;
@@ -270,6 +240,7 @@
            return;
         }
 
+        // サイズ同期
         if (canvas.width !== cw || canvas.height !== ch) {
           canvas.width = cw;
           canvas.height = ch;
@@ -277,51 +248,115 @@
           bufferCanvas.height = ch;
         }
 
-        // --- 手順1: 裏キャンバスに雪動画を描く ---
-        // activeSnowVideo（現在再生中のやつ）を使う
-        const videoToDraw = activeSnowVideo;
-        const vw = videoToDraw.videoWidth;
-        const vh = videoToDraw.videoHeight;
-        
-        if (vw > 0 && vh > 0 && !videoToDraw.paused) {
-          const videoAspect = vw / vh;
-          const canvasAspect = cw / ch;
-          let sx, sy, sw, sh;
+        // --- バッファ（裏画面）のクリア ---
+        bufferCtx.globalCompositeOperation = 'source-over';
+        bufferCtx.fillStyle = '#000000';
+        bufferCtx.fillRect(0, 0, cw, ch);
 
-          if (canvasAspect > videoAspect) {
-            sw = vw;
-            sh = vw / canvasAspect;
-            sx = 0;
-            sy = (vh - sh) / 2;
+        // ===========================================
+        // ★クロスフェード計算ロジック
+        // ===========================================
+        
+        const duration = currentSnowVideo.duration;
+        const currentTime = currentSnowVideo.currentTime;
+
+        // メタデータ読み込み前などでdurationがNaNのときは何もしない
+        if (duration && duration > 0) {
+          
+          // 1. 残り時間が FADE_DURATION を切ったら、次の動画を再生開始＆重ねて描画
+          const timeLeft = duration - currentTime;
+          
+          if (timeLeft <= FADE_DURATION) {
+            // 次の動画が止まってたら再生開始
+            if (nextSnowVideo.paused) {
+              nextSnowVideo.currentTime = 0;
+              nextSnowVideo.play().catch(()=>{});
+            }
+
+            // 透明度の計算
+            // currentは 1.0 -> 0.0 へ
+            // next は 0.0 -> 1.0 へ
+            const alphaCurrent = Math.max(0, timeLeft / FADE_DURATION); // フェードアウト
+            const alphaNext = 1.0 - alphaCurrent;                       // フェードイン
+
+            // --- 現在の動画を描画（薄くなっていく） ---
+            drawSnowToBuffer(currentSnowVideo, cw, ch, alphaCurrent);
+            
+            // --- 次の動画を描画（濃くなっていく） ---
+            drawSnowToBuffer(nextSnowVideo, cw, ch, alphaNext);
+
           } else {
-            sh = vh;
-            sw = vh * canvasAspect;
-            sx = (vw - sw) / 2;
-            sy = 0;
+            // まだフェード期間じゃないなら、現在の動画だけを全力(alpha=1)で描画
+            drawSnowToBuffer(currentSnowVideo, cw, ch, 1.0);
+            
+            // 次の動画は待機（念のため止めておく）
+            if (!nextSnowVideo.paused) {
+              nextSnowVideo.pause();
+              nextSnowVideo.currentTime = 0;
+            }
           }
 
-          bufferCtx.globalCompositeOperation = 'source-over';
-          bufferCtx.fillStyle = '#000000';
-          bufferCtx.fillRect(0, 0, cw, ch);
-          bufferCtx.drawImage(videoToDraw, sx, sy, sw, sh, 0, 0, cw, ch);
+          // 2. 現在の動画が終わったら、役割を交代（スワップ）
+          if (currentSnowVideo.ended || timeLeft <= 0) {
+            // 交代！
+            const temp = currentSnowVideo;
+            currentSnowVideo = nextSnowVideo;
+            nextSnowVideo = temp;
+
+            // 終わった方は停止して巻き戻し
+            nextSnowVideo.pause();
+            nextSnowVideo.currentTime = 0;
+          }
         }
 
-        // --- 手順2: メイン合成 ---
+        // --- メイン合成（カメラの上にバッファをスクリーン合成） ---
         ctx.globalCompositeOperation = 'source-over';
-        ctx.drawImage(cameraVideo, 0, 0, cw, ch);
+        ctx.drawImage(cameraVideo, 0, 0, cw, ch); // カメラ
 
         ctx.globalCompositeOperation = 'screen';
-        ctx.drawImage(bufferCanvas, 0, 0);
+        ctx.drawImage(bufferCanvas, 0, 0); // 雪（クロスフェード済み）
 
         requestAnimationFrame(drawCompositeFrame);
       }
 
+      // ヘルパー関数：雪動画をバッファに描画する（クロップ＆透明度指定）
+      function drawSnowToBuffer(video, cw, ch, alpha) {
+        if (alpha <= 0.01) return; // ほぼ見えないなら描かない
+
+        const vw = video.videoWidth;
+        const vh = video.videoHeight;
+        if (vw === 0 || vh === 0) return;
+
+        // クロップ計算
+        const videoAspect = vw / vh;
+        const canvasAspect = cw / ch;
+        let sx, sy, sw, sh;
+
+        if (canvasAspect > videoAspect) {
+          sw = vw;
+          sh = vw / canvasAspect;
+          sx = 0;
+          sy = (vh - sh) / 2;
+        } else {
+          sh = vh;
+          sw = vh * canvasAspect;
+          sx = (vw - sw) / 2;
+          sy = 0;
+        }
+
+        // 指定された透明度で描画
+        bufferCtx.globalAlpha = alpha;
+        bufferCtx.drawImage(video, sx, sy, sw, sh, 0, 0, cw, ch);
+        bufferCtx.globalAlpha = 1.0; // リセット
+      }
+
+
       // ==========================================
-      // 3. 撮影・録画機能
+      // 3. 撮影・録画機能（前回と同じ）
       // ==========================================
       function takePhoto() {
-        if (shutterLock) return; // ロック中なら何もしない
-        shutterLock = true; // ロック開始
+        if (shutterLock) return;
+        shutterLock = true;
 
         const flash = document.getElementById('flash');
         flash.style.opacity = 1;
@@ -330,7 +365,6 @@
         const dataURL = canvas.toDataURL('image/png');
         downloadFile(dataURL, `snow_photo_${Date.now()}.png`);
 
-        // 1秒後にロック解除（連打防止）
         setTimeout(() => { shutterLock = false; }, 1000);
       }
 
@@ -392,42 +426,29 @@
         else stopRecording();
       }
 
-      // ==========================================
-      // 4. イベント管理（連写防止ロジック強化）
-      // ==========================================
+      // イベント
       const startPress = (e) => {
         if(e.cancelable) e.preventDefault();
-        
-        // 既に押されてたら無視
         if (isPressing) return;
         isPressing = true;
-        
         isLongPress = false;
         pressTimer = setTimeout(() => startRecording(), LONG_PRESS_DURATION);
       };
 
       const endPress = (e) => {
         if(e.cancelable) e.preventDefault();
-        
-        // 押してないのに離したイベントが来た場合（マウスが外に出た後など）は無視
         if (!isPressing) return;
         isPressing = false;
-
         clearTimeout(pressTimer);
-
         if (isRecording) {
           stopRecording();
         } else {
-          // 長押し判定じゃなかった場合のみ撮影
-          if (!isLongPress) {
-            takePhoto();
-          }
+          if (!isLongPress) takePhoto();
         }
       };
 
       shutterContainer.addEventListener('mousedown', startPress);
       shutterContainer.addEventListener('touchstart', startPress, {passive: false});
-      
       shutterContainer.addEventListener('mouseup', endPress);
       shutterContainer.addEventListener('mouseleave', endPress);
       shutterContainer.addEventListener('touchend', endPress, {passive: false});
