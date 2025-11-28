@@ -1,7 +1,7 @@
 <html>
   <head>
     <meta charset="utf-8">
-    <title>Snow AR Camera (Robust Reload)</title>
+    <title>Snow AR Camera (Loading State)</title>
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no, maximum-scale=1.0, viewport-fit=cover">
     <style>
       /* 最初の見出し（h1）を消す */
@@ -62,6 +62,7 @@
         object-fit: contain; background-color: transparent;
         filter: drop-shadow(0 0 15px rgba(0,0,0,0.8));
       }
+      
       #start-btn {
         width: 60%; max-width: 300px; padding: 18px 0; 
         font-size: 20px; font-family: sans-serif;
@@ -69,9 +70,18 @@
         border: none; border-radius: 50px;
         cursor: pointer; font-weight: 900; letter-spacing: 2px;
         box-shadow: 0 4px 20px rgba(0,0,0,0.4);
-        transition: transform 0.1s; margin-bottom: 40px; 
+        transition: transform 0.1s, background 0.3s; margin-bottom: 40px; 
       }
       #start-btn:active { transform: scale(0.95); }
+      
+      /* ★ Loading中のスタイル ★ */
+      #start-btn:disabled {
+        background: rgba(200, 200, 200, 0.5);
+        color: #555;
+        cursor: wait;
+        transform: none;
+        box-shadow: none;
+      }
       
       #error-overlay {
         position: fixed; top: 0; left: 0; width: 100%; height: 100%;
@@ -148,7 +158,7 @@
       <div id="howto-container">
         <img id="howto-img" src="howto.png" alt="How to use">
       </div>
-      <button id="start-btn">START</button>
+      <button id="start-btn" disabled>Loading...</button>
     </div>
 
     <div id="error-overlay">
@@ -272,6 +282,11 @@
       // ■ アプリ初期化
       async function initApp() {
         try {
+          // ボタンはすでにHTMLでdisabled="true"になっているが、念のため
+          startBtn.textContent = "Loading...";
+          startBtn.disabled = true;
+
+          // 動画とカメラの準備完了を待つ
           await Promise.all([
             loadSnowVideo(),
             initCamera(currentFacingMode)
@@ -280,26 +295,29 @@
           updateDimensions();
           drawCompositeFrame(0);
 
+          // ★ 準備完了したらボタンをSTARTに変えて有効化
+          startBtn.textContent = "START";
+          startBtn.disabled = false;
+
           snowV1.play().catch(e => {
             console.log("自動再生ブロック: STARTボタンで再生します");
           });
 
         } catch (err) {
           showError("エラーが発生しました:\n" + err.message);
+          // エラーが出たらボタンは「Error」にして押せないままにする
+          startBtn.textContent = "Error";
         }
       }
 
       document.addEventListener('DOMContentLoaded', initApp);
       window.addEventListener('resize', () => { needsResize = true; });
 
-      // ■ リロードボタンの処理 (重要変更)
-      // カメラの接続を明示的に切ってから、ブラウザをリロードする
+      // ■ リロードボタンの処理
       reloadBtn.addEventListener('click', () => {
-        // カメラ停止
         if (cameraVideo.srcObject) {
           cameraVideo.srcObject.getTracks().forEach(track => track.stop());
         }
-        // 念の為少し待ってからブラウザ自体をリロード
         setTimeout(() => {
           window.location.reload(); 
         }, 100);
