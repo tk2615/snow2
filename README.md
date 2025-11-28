@@ -1,7 +1,7 @@
 <html>
   <head>
     <meta charset="utf-8">
-    <title>Snow AR Camera (Glass Overlay)</title>
+    <title>Snow AR Camera (Robust Reload)</title>
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no, maximum-scale=1.0, viewport-fit=cover">
     <style>
       /* 最初の見出し（h1）を消す */
@@ -43,16 +43,14 @@
       /* スタート画面（すりガラス風オーバーレイ） */
       #start-screen {
         position: fixed; top: 0; left: 0; width: 100%; height: 100%;
-        /* 背景を薄くして、下のカメラ映像が見えるようにする */
         background-color: rgba(0, 0, 0, 0.2); 
-        /* すりガラス効果 */
         backdrop-filter: blur(8px); 
         -webkit-backdrop-filter: blur(8px);
         z-index: 3000;
         display: flex; flex-direction: column;
         justify-content: space-between; align-items: center;
         padding: 40px 20px; box-sizing: border-box;
-        transition: opacity 0.4s ease, transform 0.4s ease; /* フェードアウト用 */
+        transition: opacity 0.4s ease, transform 0.4s ease;
       }
       #howto-container {
         flex: 1; width: 100%; display: flex;
@@ -62,7 +60,6 @@
       #howto-img {
         width: 120%; height: 120%;
         object-fit: contain; background-color: transparent;
-        /* 背景が透けるので、影をつけて見やすくする */
         filter: drop-shadow(0 0 15px rgba(0,0,0,0.8));
       }
       #start-btn {
@@ -140,7 +137,7 @@
     </style>
   </head>
   <body>
-    <button id="reload-btn" class="icon-btn" onclick="location.reload()">
+    <button id="reload-btn" class="icon-btn">
       <svg viewBox="0 0 24 24"><path d="M17.65 6.35C16.2 4.9 14.21 4 12 4c-4.42 0-7.99 3.58-7.99 8s3.57 8 7.99 8c3.73 0 6.84-2.55 7.73-6h-2.08c-.82 2.33-3.04 4-5.65 4-3.31 0-6-2.69-6-6s2.69-6 6-6c1.66 0 3.14.69 4.22 1.78L13 11h7V4l-2.35 2.35z"/></svg>
     </button>
     <button id="flip-btn" class="icon-btn">
@@ -252,7 +249,7 @@
         console.error(msg);
       }
 
-      // ■ Blob読み込み関数
+      // ■ Blob読み込み
       async function loadSnowVideo() {
         try {
           const response = await fetch('snow.mp4');
@@ -265,7 +262,6 @@
           snowV1.loop = false;
           snowV2.loop = false;
           
-          // プリロード
           await snowV1.load();
           await snowV2.load();
         } catch (e) {
@@ -273,27 +269,22 @@
         }
       }
 
-      // ■ アプリ初期化（爆速化版）
+      // ■ アプリ初期化
       async function initApp() {
         try {
-          // 動画とカメラを並列で準備
           await Promise.all([
             loadSnowVideo(),
             initCamera(currentFacingMode)
           ]);
 
-          // 準備ができたら裏で描画ループを開始
           updateDimensions();
           drawCompositeFrame(0);
 
-          // 可能なら裏で再生開始
           snowV1.play().catch(e => {
             console.log("自動再生ブロック: STARTボタンで再生します");
           });
 
         } catch (err) {
-          // カメラ拒否などでエラーが出ても、最初はオーバーレイで見えないかもしれないが
-          // エラー表示は z-index 4000 なので最前面に出る
           showError("エラーが発生しました:\n" + err.message);
         }
       }
@@ -301,20 +292,29 @@
       document.addEventListener('DOMContentLoaded', initApp);
       window.addEventListener('resize', () => { needsResize = true; });
 
-      // ■ スタートボタンは「幕を開ける」だけ
+      // ■ リロードボタンの処理 (重要変更)
+      // カメラの接続を明示的に切ってから、ブラウザをリロードする
+      reloadBtn.addEventListener('click', () => {
+        // カメラ停止
+        if (cameraVideo.srcObject) {
+          cameraVideo.srcObject.getTracks().forEach(track => track.stop());
+        }
+        // 念の為少し待ってからブラウザ自体をリロード
+        setTimeout(() => {
+          window.location.reload(); 
+        }, 100);
+      });
+
       startBtn.addEventListener('click', () => {
         if(currentSnowVideo.paused) {
             currentSnowVideo.play().catch(e => console.warn(e));
         }
         
-        // 画面を透過＆非表示に
         startScreen.style.opacity = '0';
-        // 少し拡大しながら消えるとカッコいい
         startScreen.style.transform = 'scale(1.1)';
         
         setTimeout(() => { startScreen.style.display = 'none'; }, 400);
         
-        // UI表示
         shutterContainer.style.display = 'block';
         flipBtn.style.display = 'flex';
         reloadBtn.style.display = 'flex';
@@ -373,9 +373,6 @@
         needsResize = false;
       }
 
-      // ==========================================
-      // ■ 描画ループ (省エネ・リレー方式)
-      // ==========================================
       function drawCompositeFrame(timestamp) {
         requestAnimationFrame(drawCompositeFrame);
 
@@ -431,7 +428,6 @@
 
         } else {
            if(currentSnowVideo.paused && startScreen.style.display !== 'none') {
-             // スタート画面が表示されている間でも、再生可能なら再生し続ける
              currentSnowVideo.play().catch(()=>{});
            }
         }
@@ -469,7 +465,6 @@
         bufferCtx.globalAlpha = 1.0;
       }
 
-      // UIイベント
       function showPreview(type, url, filename) {
         if (currentPreviewUrl && currentPreviewUrl !== snowBlobUrl) URL.revokeObjectURL(currentPreviewUrl);
         currentPreviewUrl = url;
@@ -511,7 +506,6 @@
       document.addEventListener("visibilitychange", () => {
         if (document.visibilityState === "visible") {
           if (previewModal.style.display === 'none') {
-             // スタート画面が出てても再生再開
              if (currentSnowVideo.paused) currentSnowVideo.play().catch(()=>{});
              if (cameraVideo.paused) cameraVideo.play().catch(()=>{});
           }
