@@ -1,7 +1,7 @@
 <html>
   <head>
     <meta charset="utf-8">
-    <title>Snow AR Camera (Instant Start)</title>
+    <title>Snow AR Camera (Glass Overlay)</title>
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no, maximum-scale=1.0, viewport-fit=cover">
     <style>
       /* 最初の見出し（h1）を消す */
@@ -40,15 +40,19 @@
       #reload-btn { right: 20px; }
       #flip-btn { left: 20px; }
 
-      /* スタート画面 */
+      /* スタート画面（すりガラス風オーバーレイ） */
       #start-screen {
         position: fixed; top: 0; left: 0; width: 100%; height: 100%;
-        background-color: rgba(0, 0, 0, 0.8); /* 少し濃くしたで、裏が見えんように */
+        /* 背景を薄くして、下のカメラ映像が見えるようにする */
+        background-color: rgba(0, 0, 0, 0.2); 
+        /* すりガラス効果 */
+        backdrop-filter: blur(8px); 
+        -webkit-backdrop-filter: blur(8px);
         z-index: 3000;
         display: flex; flex-direction: column;
         justify-content: space-between; align-items: center;
         padding: 40px 20px; box-sizing: border-box;
-        transition: opacity 0.5s ease;
+        transition: opacity 0.4s ease, transform 0.4s ease; /* フェードアウト用 */
       }
       #howto-container {
         flex: 1; width: 100%; display: flex;
@@ -58,15 +62,16 @@
       #howto-img {
         width: 120%; height: 120%;
         object-fit: contain; background-color: transparent;
-        filter: drop-shadow(0 0 10px rgba(0,0,0,0.5));
+        /* 背景が透けるので、影をつけて見やすくする */
+        filter: drop-shadow(0 0 15px rgba(0,0,0,0.8));
       }
       #start-btn {
         width: 60%; max-width: 300px; padding: 18px 0; 
         font-size: 20px; font-family: sans-serif;
-        background: white; color: black;
+        background: rgba(255, 255, 255, 0.9); color: black;
         border: none; border-radius: 50px;
         cursor: pointer; font-weight: 900; letter-spacing: 2px;
-        box-shadow: 0 4px 15px rgba(255,255,255,0.2);
+        box-shadow: 0 4px 20px rgba(0,0,0,0.4);
         transition: transform 0.1s; margin-bottom: 40px; 
       }
       #start-btn:active { transform: scale(0.95); }
@@ -271,8 +276,7 @@
       // ■ アプリ初期化（爆速化版）
       async function initApp() {
         try {
-          // Promise.allで「動画読み込み」と「カメラ起動」を並列実行！
-          // どっちが終わるのを待つ必要はない、両方同時に進めるで。
+          // 動画とカメラを並列で準備
           await Promise.all([
             loadSnowVideo(),
             initCamera(currentFacingMode)
@@ -282,31 +286,33 @@
           updateDimensions();
           drawCompositeFrame(0);
 
-          // 可能なら裏で再生開始してしまう（ミュートなので自動再生できる可能性大）
+          // 可能なら裏で再生開始
           snowV1.play().catch(e => {
-            console.log("自動再生ブロックされました（想定内）: STARTボタンで再生します");
+            console.log("自動再生ブロック: STARTボタンで再生します");
           });
 
         } catch (err) {
+          // カメラ拒否などでエラーが出ても、最初はオーバーレイで見えないかもしれないが
+          // エラー表示は z-index 4000 なので最前面に出る
           showError("エラーが発生しました:\n" + err.message);
         }
       }
 
-      // ページ読み込みの早い段階で初期化スタート
-      // window.onloadより早いDOMContentLoadedでキックする
       document.addEventListener('DOMContentLoaded', initApp);
       window.addEventListener('resize', () => { needsResize = true; });
 
       // ■ スタートボタンは「幕を開ける」だけ
       startBtn.addEventListener('click', () => {
-        // もし自動再生がブロックされてたらここで再生（ユーザーアクション内なら確実）
         if(currentSnowVideo.paused) {
             currentSnowVideo.play().catch(e => console.warn(e));
         }
         
-        // 画面を消す
+        // 画面を透過＆非表示に
         startScreen.style.opacity = '0';
-        setTimeout(() => { startScreen.style.display = 'none'; }, 500);
+        // 少し拡大しながら消えるとカッコいい
+        startScreen.style.transform = 'scale(1.1)';
+        
+        setTimeout(() => { startScreen.style.display = 'none'; }, 400);
         
         // UI表示
         shutterContainer.style.display = 'block';
@@ -395,7 +401,6 @@
         if (duration && duration > 0) {
           const timeLeft = duration - currentTime;
           
-          // リレーロジック
           if (timeLeft <= FADE_DURATION) {
             if (nextSnowVideo.paused) {
               nextSnowVideo.currentTime = 0;
@@ -425,8 +430,8 @@
           }
 
         } else {
-           if(currentSnowVideo.paused && startScreen.style.display === 'none') {
-             // スタート画面が消えているのに止まっていたら再生
+           if(currentSnowVideo.paused && startScreen.style.display !== 'none') {
+             // スタート画面が表示されている間でも、再生可能なら再生し続ける
              currentSnowVideo.play().catch(()=>{});
            }
         }
@@ -505,7 +510,8 @@
 
       document.addEventListener("visibilitychange", () => {
         if (document.visibilityState === "visible") {
-          if (previewModal.style.display === 'none' && startScreen.style.display === 'none') {
+          if (previewModal.style.display === 'none') {
+             // スタート画面が出てても再生再開
              if (currentSnowVideo.paused) currentSnowVideo.play().catch(()=>{});
              if (cameraVideo.paused) cameraVideo.play().catch(()=>{});
           }
