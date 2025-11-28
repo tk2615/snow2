@@ -1,7 +1,7 @@
 <html>
   <head>
     <meta charset="utf-8">
-    <title>Snow AR Camera (Loading State)</title>
+    <title>Snow AR Camera (Speed Optimized)</title>
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no, maximum-scale=1.0, viewport-fit=cover">
     <style>
       /* 最初の見出し（h1）を消す */
@@ -74,7 +74,7 @@
       }
       #start-btn:active { transform: scale(0.95); }
       
-      /* ★ Loading中のスタイル ★ */
+      /* Loading中のスタイル */
       #start-btn:disabled {
         background: rgba(200, 200, 200, 0.5);
         color: #555;
@@ -178,8 +178,8 @@
     </div>
 
     <video id="camera-feed" class="hidden-source" autoplay muted playsinline></video>
-    <video id="snow-1" class="hidden-source" muted playsinline webkit-playsinline></video>
-    <video id="snow-2" class="hidden-source" muted playsinline webkit-playsinline></video>
+    <video id="snow-1" class="hidden-source" src="snow.mp4" muted playsinline webkit-playsinline preload="auto"></video>
+    <video id="snow-2" class="hidden-source" src="snow.mp4" muted playsinline webkit-playsinline preload="auto"></video>
 
     <canvas id="work-canvas"></canvas>
 
@@ -228,7 +228,7 @@
       const errorText = document.getElementById('error-text');
       
       let currentPreviewUrl = null;
-      let snowBlobUrl = null;
+      // Blob URLは使わへんから削除
 
       const radius = progressCircle.r.baseVal.value;
       const circumference = radius * 2 * Math.PI;
@@ -259,43 +259,46 @@
         console.error(msg);
       }
 
-      // ■ Blob読み込み
-      async function loadSnowVideo() {
-        try {
-          const response = await fetch('snow.mp4');
-          if (!response.ok) throw new Error('Failed to fetch video');
-          const blob = await response.blob();
-          snowBlobUrl = URL.createObjectURL(blob);
-          
-          snowV1.src = snowBlobUrl;
-          snowV2.src = snowBlobUrl;
-          snowV1.loop = false;
-          snowV2.loop = false;
-          
-          await snowV1.load();
-          await snowV2.load();
-        } catch (e) {
-          throw new Error("動画ファイルの読み込みに失敗しました: " + e.message);
-        }
-      }
-
-      // ■ アプリ初期化
+      // ■ アプリ初期化（スピード重視）
       async function initApp() {
         try {
-          // ボタンはすでにHTMLでdisabled="true"になっているが、念のため
           startBtn.textContent = "Loading...";
           startBtn.disabled = true;
 
-          // 動画とカメラの準備完了を待つ
-          await Promise.all([
-            loadSnowVideo(),
+          // 動画の読み込み待機用関数（再生可能になったら即resolve）
+          const waitForVideo = (video) => {
+            return new Promise((resolve) => {
+              // 既に再生可能なら即OK
+              if (video.readyState >= 3) return resolve();
+              // canplayイベントを待つ
+              video.oncanplay = () => resolve();
+              video.onerror = (e) => { 
+                console.warn("動画読み込み警告:", e); 
+                resolve(); // エラーでも止まらず進む（保険）
+              };
+              // 念のため src を再設定してキック
+              if(!video.src) video.src = "snow.mp4";
+              video.load();
+            });
+          };
+
+          // 動画とカメラ、どっちも待つけど、動画は「再生できる分」だけでOK
+          // 万が一のために、3秒経ったら強制的に準備完了とする（タイムアウト保険）
+          const timeoutPromise = new Promise(resolve => setTimeout(resolve, 3000));
+          
+          const startupTasks = Promise.all([
+            waitForVideo(snowV1),
+            waitForVideo(snowV2),
             initCamera(currentFacingMode)
           ]);
+
+          // タスク完了か、3秒経過か、早い方を採用
+          await Promise.race([startupTasks, timeoutPromise]);
 
           updateDimensions();
           drawCompositeFrame(0);
 
-          // ★ 準備完了したらボタンをSTARTに変えて有効化
+          // 準備完了！ボタン開放
           startBtn.textContent = "START";
           startBtn.disabled = false;
 
@@ -305,7 +308,6 @@
 
         } catch (err) {
           showError("エラーが発生しました:\n" + err.message);
-          // エラーが出たらボタンは「Error」にして押せないままにする
           startBtn.textContent = "Error";
         }
       }
@@ -313,14 +315,11 @@
       document.addEventListener('DOMContentLoaded', initApp);
       window.addEventListener('resize', () => { needsResize = true; });
 
-      // ■ リロードボタンの処理
       reloadBtn.addEventListener('click', () => {
         if (cameraVideo.srcObject) {
           cameraVideo.srcObject.getTracks().forEach(track => track.stop());
         }
-        setTimeout(() => {
-          window.location.reload(); 
-        }, 100);
+        setTimeout(() => { window.location.reload(); }, 100);
       });
 
       startBtn.addEventListener('click', () => {
@@ -484,7 +483,7 @@
       }
 
       function showPreview(type, url, filename) {
-        if (currentPreviewUrl && currentPreviewUrl !== snowBlobUrl) URL.revokeObjectURL(currentPreviewUrl);
+        if (currentPreviewUrl) URL.revokeObjectURL(currentPreviewUrl);
         currentPreviewUrl = url;
         previewModal.style.display = 'flex';
         shutterContainer.style.display = 'none';
