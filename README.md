@@ -1,7 +1,7 @@
 <html>
   <head>
     <meta charset="utf-8">
-    <title>Snow AR Camera (Preload Optimized)</title>
+    <title>Snow AR Camera (With Audio)</title>
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no, maximum-scale=1.0, viewport-fit=cover">
     
     <link rel="preload" href="snow.mp4" as="video" type="video/mp4">
@@ -101,7 +101,10 @@
         border-radius: 8px; box-shadow: 0 0 20px rgba(0,0,0,0.5);
         margin-bottom: 30px; object-fit: contain;
       }
-      #preview-video { pointer-events: none; }
+      /* プレビュー動画は音を出して確認したいので pointer-events: none は外すか、再生ボタンが欲しいが
+         ここではタップで再生コントロールが出るようにしておく */
+      #preview-video { pointer-events: auto; }
+      
       .preview-text { font-size: 14px; margin-bottom: 20px; color: #ccc; }
       .preview-buttons { display: flex; gap: 20px; }
       .btn { padding: 12px 30px; border-radius: 30px; border: none; font-size: 16px; font-weight: bold; cursor: pointer; }
@@ -111,6 +114,7 @@
       /* シャッターボタン */
       #shutter-container {
         position: fixed; bottom: 30px; left: 50%; transform: translateX(-50%);
+        bottom: calc(30px + env(safe-area-inset-bottom));
         width: 104px; height: 104px; z-index: 100; cursor: pointer;
         -webkit-tap-highlight-color: transparent; user-select: none; display: none;
       }
@@ -160,7 +164,7 @@
 
     <div id="preview-modal">
       <img id="preview-img">
-      <video id="preview-video" autoplay loop playsinline muted></video>
+      <video id="preview-video" controls playsinline></video>
       <p id="preview-msg-photo" class="preview-text">＊画像を長押しで保存してください</p>
       <div class="preview-buttons">
         <button id="btn-save-video" class="btn btn-save" style="display:none;">Download</button>
@@ -248,7 +252,6 @@
         console.error(msg);
       }
 
-      // ■ アプリ初期化
       async function initApp() {
         try {
           startBtn.textContent = "Loading...";
@@ -317,11 +320,13 @@
         }
         let stream = null;
         try {
+          // ★ AudioをTrueにしてマイクも取得
           stream = await navigator.mediaDevices.getUserMedia({
             video: { facingMode: facingMode, width: { ideal: 1280 }, height: { ideal: 720 } },
-            audio: false 
+            audio: true 
           });
         } catch (err) {
+          // マイクがだめでも映像だけでリトライ
           try {
              stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: facingMode }, audio: false });
           } catch(e) { throw e; }
@@ -453,7 +458,9 @@
           previewMsgPhoto.style.display = 'none';
           btnSaveVideo.style.display = 'block';
           previewVideo.src = url;
-          previewVideo.muted = true; 
+          // 音声確認のためmutedを外す（自動再生は効かないかもなのでcontrolsつける）
+          previewVideo.muted = false; 
+          previewVideo.controls = true;
           previewVideo.play().catch(()=>{});
           btnSaveVideo.onclick = () => downloadFile(url, filename);
         }
@@ -496,13 +503,26 @@
         isLongPress = true;
         shutterContainer.classList.add('recording');
         recordingStartTime = Date.now();
-        const stream = canvas.captureStream(30);
+        
+        // ★ 映像ストリーム
+        const canvasStream = canvas.captureStream(30);
+        
+        // ★ 音声ストリームの抽出と結合
+        let finalStream = canvasStream;
+        if (cameraVideo.srcObject) {
+          const audioTracks = cameraVideo.srcObject.getAudioTracks();
+          if (audioTracks.length > 0) {
+            // 映像トラックと音声トラックを混ぜた新しいストリームを作る
+            finalStream = new MediaStream([...canvasStream.getTracks(), ...audioTracks]);
+          }
+        }
+
         const mimeTypes = ['video/mp4;codecs=avc1', 'video/mp4', 'video/webm;codecs=h264', 'video/webm'];
         const selectedMimeType = mimeTypes.find(type => MediaRecorder.isTypeSupported(type)) || '';
         try {
-          mediaRecorder = new MediaRecorder(stream, selectedMimeType ? { mimeType: selectedMimeType } : undefined);
+          mediaRecorder = new MediaRecorder(finalStream, selectedMimeType ? { mimeType: selectedMimeType } : undefined);
         } catch (e) {
-          mediaRecorder = new MediaRecorder(stream);
+          mediaRecorder = new MediaRecorder(finalStream);
         }
         mediaRecorder.ondataavailable = (event) => {
           if (event.data.size > 0) recordedChunks.push(event.data);
